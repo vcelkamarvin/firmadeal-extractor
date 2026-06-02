@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "export": "next build && next export"
+    "export": "next build && next export",
+    "postinstall": "npx playwright install chromium"
   },
   "dependencies": {
     "next": "^14.0.0",

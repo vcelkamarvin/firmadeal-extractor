@@ -2,6 +2,15 @@
 
 import { useState } from 'react';
 
+interface CompetitorData {
+  name: string;
+  rating: string | null;
+  review_volume: string | null;
+  category: string | null;
+  distance: string | null;
+  url: string | null;
+}
+
 interface ExtractionData {
   name: string | null;
   category: string | null;
@@ -12,6 +21,13 @@ interface ExtractionData {
   latitude: number | null;
   longitude: number | null;
   resolved_url: string | null;
+  city: string | null;
+  region: string | null;
+  country: string | null;
+  competitor_count: number | null;
+  competitors: CompetitorData[];
+  search_interest: string | null;
+  spot_category: string | null;
 }
 
 export default function Home() {
@@ -84,12 +100,12 @@ export default function Home() {
 
   const downloadCSV = () => {
     if (results.length === 0) return;
-    const headers = ['Name', 'Category', 'Rating', 'Address', 'Phone', 'Latitude', 'Longitude'];
+    const headers = ['Name', 'Category', 'City', 'Region', 'Country', 'Rating', 'Reviews', 'Address', 'Phone', 'Latitude', 'Longitude', 'CompetitorCount'];
     const csvContent = [
       headers.join(','),
       ...results.map((r) =>
-        [r.name, r.category, r.rating, r.address, r.phone, r.latitude, r.longitude]
-          .map((v) => `"${v || ''}"`)
+        [r.name, r.category, r.city, r.region, r.country, r.rating, r.review_volume, r.address, r.phone, r.latitude, r.longitude, r.competitor_count]
+          .map((v) => `"${v ?? ''}"`)
           .join(',')
       ),
     ].join('\n');
@@ -159,90 +175,141 @@ https://maps.app.goo.gl/..."
         {/* Results Section */}
         {results.length > 0 && (
           <div className="space-y-6">
-            {/* Export Buttons */}
-            <div className="flex gap-3">
-              <button
-                onClick={downloadJSON}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 px-4 rounded-lg transition"
-              >
-                Download JSON
-              </button>
-              <button
-                onClick={downloadCSV}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 px-4 rounded-lg transition"
-              >
-                Download CSV
-              </button>
-              <div className="flex-1"></div>
-              <span className="text-gray-400 py-2">
-                {results.length} business{results.length !== 1 ? 'es' : ''} extracted
-              </span>
-            </div>
-
-            {/* Results Table */}
-            <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-900 border-b border-slate-700">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-gray-300 font-semibold">Business Name</th>
-                      <th className="px-4 py-3 text-left text-gray-300 font-semibold">Category</th>
-                      <th className="px-4 py-3 text-left text-gray-300 font-semibold">Address</th>
-                      <th className="px-4 py-3 text-left text-gray-300 font-semibold">Phone</th>
-                      <th className="px-4 py-3 text-left text-gray-300 font-semibold">Rating</th>
-                      <th className="px-4 py-3 text-left text-gray-300 font-semibold">Reviews</th>
-                      <th className="px-4 py-3 text-left text-gray-300 font-semibold">Coords</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-700">
-                    {results.map((result, idx) => (
-                      <tr key={idx} className="hover:bg-slate-700/50 transition">
-                        <td className="px-4 py-3">
-                          <div className="font-medium text-white truncate max-w-xs">{result.name || '-'}</div>
-                        </td>
-                        <td className="px-4 py-3 text-gray-300 truncate max-w-xs">{result.category || '-'}</td>
-                        <td className="px-4 py-3 text-gray-400 text-xs">
-                          <button
-                            onClick={() => copyToClipboard(result.address || '')}
-                            className="hover:text-blue-400 transition truncate max-w-xs block"
-                            title="Click to copy"
-                          >
-                            {result.address || '-'}
-                          </button>
-                        </td>
-                        <td className="px-4 py-3 text-gray-400 text-xs">
-                          <button
-                            onClick={() => copyToClipboard(result.phone || '')}
-                            className="hover:text-blue-400 transition font-mono"
-                            title="Click to copy"
-                          >
-                            {result.phone || '-'}
-                          </button>
-                        </td>
-                        <td className="px-4 py-3 text-yellow-400 text-xs">{result.rating || '-'}</td>
-                        <td className="px-4 py-3 text-gray-300 text-xs">{result.review_volume || '-'}</td>
-                        <td className="px-4 py-3 text-gray-400 text-xs font-mono">
-                          <button
-                            onClick={() => copyToClipboard(`${result.latitude},${result.longitude}`)}
-                            className="hover:text-blue-400 transition"
-                            title="Click to copy"
-                          >
-                            {result.latitude?.toFixed(3)}, {result.longitude?.toFixed(3)}
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-gray-300">
+                Extracted {results.length} business{results.length !== 1 ? 'es' : ''}. Copy values directly or export them for your workflow.
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={downloadJSON}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 px-4 rounded-lg transition"
+                >
+                  Download JSON
+                </button>
+                <button
+                  onClick={downloadCSV}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 px-4 rounded-lg transition"
+                >
+                  Download CSV
+                </button>
+                <button
+                  onClick={() => {
+                    setResults([]);
+                    setUrls('');
+                    setError('');
+                  }}
+                  className="bg-slate-700 hover:bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg transition"
+                >
+                  Clear
+                </button>
               </div>
             </div>
 
-            {/* Detailed View (Expandable) */}
-            <div className="bg-slate-800 rounded-lg border border-slate-700 p-4">
-              <h3 className="text-lg font-bold text-blue-400 mb-4">Raw JSON Export</h3>
-              <pre className="bg-slate-900 rounded p-4 text-xs text-gray-300 overflow-x-auto max-h-96">
-                {JSON.stringify(results, null, 2)}
-              </pre>
+            <div className="grid gap-6">
+              {results.map((result, idx) => {
+                const coords =
+                  result.latitude != null && result.longitude != null
+                    ? `${result.latitude.toFixed(5)}, ${result.longitude.toFixed(5)}`
+                    : '-';
+
+                return (
+                  <div key={idx} className="bg-slate-800 rounded-3xl border border-slate-700 p-6 shadow-xl">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="space-y-2">
+                        <h2 className="text-2xl font-semibold text-white">
+                          {result.name || 'Untitled business'}
+                        </h2>
+                        <p className="text-gray-400">{result.category || 'Category not available'}</p>
+                        {result.resolved_url ? (
+                          <a
+                            href={result.resolved_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-sm text-blue-400 hover:text-blue-300"
+                          >
+                            Open Google Maps listing
+                          </a>
+                        ) : null}
+                      </div>
+
+                      <div className="grid gap-2 text-sm text-gray-300 text-left sm:text-right">
+                        <span>{result.rating || '-'} rating</span>
+                        <span>{result.review_volume || '-'} reviews</span>
+                        <span>{result.competitor_count ?? 0} competitors</span>
+                        <span>
+                          {result.city || '-'} / {result.region || '-'} / {result.country || '-'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="mt-6 grid gap-4 lg:grid-cols-2">
+                      <div className="rounded-2xl border border-slate-700 bg-slate-900 p-4">
+                        <div className="text-xs uppercase tracking-[0.2em] text-slate-500 mb-2">Address</div>
+                        <button
+                          onClick={() => copyToClipboard(result.address || '')}
+                          className="text-sm text-gray-100 text-left hover:text-blue-300 transition w-full"
+                          title="Click to copy"
+                        >
+                          {result.address || 'Not available'}
+                        </button>
+                      </div>
+                      <div className="rounded-2xl border border-slate-700 bg-slate-900 p-4">
+                        <div className="text-xs uppercase tracking-[0.2em] text-slate-500 mb-2">Phone</div>
+                        <button
+                          onClick={() => copyToClipboard(result.phone || '')}
+                          className="text-sm text-gray-100 text-left hover:text-blue-300 transition w-full"
+                          title="Click to copy"
+                        >
+                          {result.phone || 'Not available'}
+                        </button>
+                      </div>
+                      <div className="rounded-2xl border border-slate-700 bg-slate-900 p-4">
+                        <div className="text-xs uppercase tracking-[0.2em] text-slate-500 mb-2">Coordinates</div>
+                        <button
+                          onClick={() => copyToClipboard(coords)}
+                          className="text-sm text-gray-100 text-left hover:text-blue-300 transition w-full"
+                          title="Click to copy"
+                        >
+                          {coords}
+                        </button>
+                      </div>
+                      <div className="rounded-2xl border border-slate-700 bg-slate-900 p-4">
+                        <div className="text-xs uppercase tracking-[0.2em] text-slate-500 mb-2">Search Interest</div>
+                        <div className="text-sm text-gray-100">{result.search_interest || 'Auto-generated search interest unavailable'}</div>
+                      </div>
+                    </div>
+
+                    {result.competitors.length > 0 && (
+                      <div className="mt-6 rounded-2xl border border-slate-700 bg-slate-900 p-4">
+                        <div className="mb-3 text-sm font-semibold text-white">Detected competitors</div>
+                        <div className="grid gap-3 md:grid-cols-2">
+                          {result.competitors.map((competitor, compIndex) => (
+                            <div key={compIndex} className="rounded-2xl border border-slate-800 bg-slate-800 p-4">
+                              <div className="font-medium text-white truncate">{competitor.name}</div>
+                              <div className="text-xs text-slate-400 truncate">
+                                {competitor.category || 'Unknown category'}
+                              </div>
+                              <div className="text-xs text-slate-500">
+                                {competitor.rating || competitor.review_volume || 'No rating data'}
+                              </div>
+                              {competitor.url ? (
+                                <a
+                                  href={competitor.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-blue-400 hover:text-blue-300 mt-2 inline-block"
+                                >
+                                  Open listing →
+                                </a>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
