@@ -1,0 +1,23 @@
+{
+  "name": "firmadeal-extractor",
+  "version": "1.0.0",
+  "description": "Institutional data extraction engine for Google Maps business intelligence",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "export": "next build && next export"
+  },
+  "dependencies": {
+    "next": "^14.0.0",
+    "playwright": "^1.40.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.2.0",
+    "typescript": "^5.0.0",
+    "vercel": "^54.7.1"
+  }
+}
