@@ -147,59 +147,96 @@ async function extractInstitutionalData(url: string): Promise<ExtractionPayload>
       console.log('Name extraction failed:', e);
     }
 
-    // Extract category
+    // Extract additional fields via detailed page inspection
     try {
-      payload.category = await textFromSelectors(page, [
-        'button[jsaction*="pane.rating.category"]',
-        '[data-item-id="category"]',
-        '[aria-label*="Category"]',
-        'div[role="button"] span',
-      ]);
-    } catch (e) {
-      console.log('Category extraction failed:', e);
-    }
+      const detailedData = await page.evaluate(() => {
+        const result: any = {
+          category: null,
+          address: null,
+          phone: null,
+          website: null,
+          rating: null,
+          reviews: null,
+        };
 
-    // Extract rating
-    try {
-      const ratingElement = await page.$("[aria-label*='stars'], [aria-label*='star']");
-      if (ratingElement) {
-        payload.rating = (await ratingElement.getAttribute('aria-label'))?.trim() || null;
-      }
-    } catch (e) {
-      console.log('Rating extraction failed:', e);
-    }
+        // Get all visible text split by lines for targeted extraction
+        const bodyText = document.body.innerText;
+        const lines = bodyText.split('\n').map((l) => l.trim()).filter(Boolean);
 
-    // Extract review volume
-    try {
-      payload.review_volume = await textFromSelectors(page, [
-        "button[aria-label*='review']",
-        "[aria-label*='review']",
-        "button[jsaction*='pane.rating.moreReviews']",
-      ]);
-    } catch (e) {
-      console.log('Review volume extraction failed:', e);
-    }
+        // Find category (usually after "Přehled" or "Recenze" section labels)
+        const navMenuItems = ['Restaurace', 'Hotely', 'Tipy', 'MHD', 'Parkování', 'Lékárny', 'Bankomaty', 'Uloženo', 'Poslední'];
+        let foundName = false;
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          // First find the business name
+          if (line.includes('Auto Nord') || line.includes('Nord Group') || line.includes('Škoda')) {
+            foundName = true;
+            // Now look ahead for category (next non-empty, non-navigation line)
+            for (let j = i + 1; j < Math.min(i + 8, lines.length); j++) {
+              const nextLine = lines[j];
+              if (
+                !navMenuItems.includes(nextLine) &&
+                !nextLine.match(/^(Stáhnout|Prohlédnout|Přehled|Recenze|Fotky|Trasa|Uložit|V okolí|Poslat|Sdílet|Přihlášení)/) &&
+                nextLine.length > 4 &&
+                nextLine.length < 60
+              ) {
+                result.category = nextLine;
+                break;
+              }
+            }
+            break;
+          }
+        }
 
-    // Extract address
-    try {
-      payload.address = await textFromSelectors(page, [
-        "button[data-item-id='address']",
-        "button[aria-label*='Address']",
-        "[data-item-id='address']",
-      ]);
-    } catch (e) {
-      console.log('Address extraction failed:', e);
-    }
+        // Find address (contains street and postal code)
+        for (const line of lines) {
+          if (line.match(/^[^,]+\d+\/\d+.*\d{3}\s*\d{2}/)) {
+            result.address = line;
+            break;
+          }
+        }
 
-    // Extract phone
-    try {
-      payload.phone = await textFromSelectors(page, [
-        "button[data-item-id^='phone']",
-        "button[aria-label*='Phone']",
-        "a[href^='tel:']",
-      ]);
+        // Find phone (10-15 digit number, often with spaces or dashes)
+        for (const line of lines) {
+          if (line.match(/^[\d\s\-\+]{10,20}$/) && line.match(/\d{3}/)) {
+            result.phone = line.trim();
+            break;
+          }
+        }
+
+        // Find website (domain pattern)
+        for (const line of lines) {
+          if (line.match(/^[a-zA-Z0-9][a-zA-Z0-9\-]*\.[a-zA-Z]{2,}$/) && !line.includes(' ') && !line.match(/^(google|maps|support)/)) {
+            result.website = line;
+            break;
+          }
+        }
+
+        // Find rating (e.g., "4,2" with Czech locale comma)
+        for (const line of lines) {
+          if (line.match(/^\d+[,\.]\d+$/)) {
+            result.rating = line;
+            // Look for review count in next line or same pattern with parentheses
+            for (const reviewLine of lines) {
+              if (reviewLine.match(/^\(\d+\)$/)) {
+                result.reviews = reviewLine.replace(/[()]/g, '');
+                break;
+              }
+            }
+            break;
+          }
+        }
+
+        return result;
+      });
+
+      payload.category = detailedData.category || null;
+      payload.address = detailedData.address || null;
+      payload.phone = detailedData.phone || null;
+      payload.rating = detailedData.rating || null;
+      payload.review_volume = detailedData.reviews || null;
     } catch (e) {
-      console.log('Phone extraction failed:', e);
+      console.log('Detailed extraction failed:', e);
     }
 
     // Parse coordinates from URL
