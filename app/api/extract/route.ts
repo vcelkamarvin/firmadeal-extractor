@@ -47,7 +47,7 @@ export interface IndustryYearData { year: number; context: string; }
 export interface IndustryEconomics { industry_label: string; ebitda_multiple: { low: number; mid: number; high: number }; avg_margin_pct: number | null; market_size_de_bn: number | null; cagr_5y_pct: number | null; trend_summary: string; yearly: IndustryYearData[]; structural_margins: string; failure_rate_note: string; model_mechanics: string; }
 export interface CompetitorData { name: string | null; url: string | null; address: string | null; rating: string | null; review_volume: string | null; category: string | null; price_level: string | null; phone: string | null; business_status: string | null; distance: string | null; }
 export interface TimelinePoint { period: string; reviews: number; trends_index: number; }
-export interface MacroData { unemployment_pct: number; national_avg_unemployment: number; ppp_index: number; median_gross_wage: number; commercial_rent_per_sqm: number; bundesland: string | null; city: string | null; data_source: string; }
+export interface MacroData { unemployment_pct: number; national_avg_unemployment: number; ppp_index: number; median_gross_wage: number; commercial_rent_per_sqm: number; bundesland: string | null; city: string | null; data_source: string; country_code: string | null; unemployment_history: { month: string; rate: number }[]; }
 export interface LaborFriction { index: number; unemployment_pct: number; national_avg_unemployment: number; wage_pressure_flag: boolean; interpretation: string; }
 
 // ── Probabilistic finance interfaces ──────────────────────────────────────────
@@ -118,6 +118,23 @@ export interface SpatialContext {
   location_economics: string;
 }
 
+export interface WeatherMonth {
+  month: string;
+  avg_temp_c: number;
+  precipitation_mm: number;
+  review_activity_norm: number; // 0–100 normalized from market timeline
+  climate_score: number;        // 0–100 (100 = best trading weather)
+}
+
+export interface ClimateData {
+  climate_sensitivity_score: number;   // 0–100 (100 = highly weather-dependent)
+  weather_correlation_pct: number;     // Pearson r × 100
+  peak_weather_month: string;
+  worst_weather_month: string;
+  interpretation: string;
+  monthly: WeatherMonth[];
+}
+
 // ── Payload ────────────────────────────────────────────────────────────────────
 
 export interface ExtractionPayload {
@@ -147,6 +164,7 @@ export interface ExtractionPayload {
   industry_economics: IndustryEconomics | null;
   spatial_context: SpatialContext | null;
   search_interest: string | null; spot_category: string | null;
+  climate_data: ClimateData | null;
 }
 
 // ── Industry economics (expanded) ─────────────────────────────────────────────
@@ -402,9 +420,10 @@ function buildDependencyMatrix(type: string, drivers?: CostDriver[]): Dependency
 
 // ── Bundesland macro data ──────────────────────────────────────────────────────
 
-interface BLMacro { unemployment_pct: number; ppp_index: number; median_gross_wage: number; }
+interface RegionMacro { unemployment_pct: number; ppp_index: number; median_gross_wage: number; }
 
-const BUNDESLAND_MACRO: Record<string, BLMacro> = {
+// ── Germany ──────────────────────────────────────────────────────────────────
+const BUNDESLAND_MACRO: Record<string, RegionMacro> = {
   'Bayern':                  { unemployment_pct: 3.4, ppp_index: 108.5, median_gross_wage: 46200 },
   'Baden-Württemberg':       { unemployment_pct: 3.5, ppp_index: 106.8, median_gross_wage: 47100 },
   'Hamburg':                 { unemployment_pct: 5.8, ppp_index: 112.3, median_gross_wage: 50200 },
@@ -422,9 +441,9 @@ const BUNDESLAND_MACRO: Record<string, BLMacro> = {
   'Saarland':                { unemployment_pct: 6.5, ppp_index: 96.4,  median_gross_wage: 40100 },
   'Bremen':                  { unemployment_pct: 9.9, ppp_index: 97.5,  median_gross_wage: 43500 },
 };
-const BL_DEFAULT: BLMacro = { unemployment_pct: 5.5, ppp_index: 100, median_gross_wage: 43000 };
+const BL_DEFAULT: RegionMacro = { unemployment_pct: 5.5, ppp_index: 100, median_gross_wage: 43000 };
 
-const CITY_RENT_MAP: [string[], number][] = [
+const DE_CITY_RENT_MAP: [string[], number][] = [
   [['münchen', 'munich'], 35],
   [['frankfurt'], 32],
   [['hamburg'], 30],
@@ -432,35 +451,138 @@ const CITY_RENT_MAP: [string[], number][] = [
   [['köln', 'cologne', 'düsseldorf', 'stuttgart', 'nürnberg', 'nuremberg', 'leipzig', 'hannover', 'dresden'], 21],
   [['dortmund', 'essen', 'bochum', 'wuppertal', 'duisburg', 'bonn', 'mannheim', 'karlsruhe', 'augsburg'], 16],
 ];
-const RENT_DEFAULT = 12;
+
+// ── Czechia ───────────────────────────────────────────────────────────────────
+// PPP relative to DE=100. Wages in EUR/year. Rent in EUR/m²/month.
+const CZ_REGION_MACRO: [string[], RegionMacro][] = [
+  [['praha', 'prague'],                         { unemployment_pct: 2.1, ppp_index: 73, median_gross_wage: 28000 }],
+  [['jihomoravský', 'brno'],                    { unemployment_pct: 2.9, ppp_index: 58, median_gross_wage: 19500 }],
+  [['plzeňský', 'plzeň', 'plzen'],             { unemployment_pct: 2.5, ppp_index: 57, median_gross_wage: 18000 }],
+  [['středočeský', 'středočeský kraj'],        { unemployment_pct: 2.3, ppp_index: 65, median_gross_wage: 21000 }],
+  [['liberecký', 'liberec', 'jablonec'],       { unemployment_pct: 2.6, ppp_index: 51, median_gross_wage: 13500 }],
+  [['královéhradecký', 'hradec králové'],      { unemployment_pct: 2.2, ppp_index: 54, median_gross_wage: 14500 }],
+  [['pardubický', 'pardubice'],                 { unemployment_pct: 2.4, ppp_index: 53, median_gross_wage: 14000 }],
+  [['olomoucký', 'olomouc'],                   { unemployment_pct: 3.8, ppp_index: 51, median_gross_wage: 13500 }],
+  [['moravskoslezský', 'ostrava'],             { unemployment_pct: 4.2, ppp_index: 50, median_gross_wage: 14500 }],
+  [['zlínský', 'zlín'],                        { unemployment_pct: 2.9, ppp_index: 53, median_gross_wage: 14000 }],
+  [['jihočeský', 'české budějovice'],          { unemployment_pct: 2.4, ppp_index: 53, median_gross_wage: 14000 }],
+  [['vysočina', 'jihlava'],                    { unemployment_pct: 2.8, ppp_index: 50, median_gross_wage: 13000 }],
+  [['ústecký', 'ústí nad labem', 'most'],      { unemployment_pct: 5.6, ppp_index: 47, median_gross_wage: 12500 }],
+  [['karlovarský', 'karlovy vary'],            { unemployment_pct: 4.1, ppp_index: 48, median_gross_wage: 12800 }],
+];
+const CZ_DEFAULT: RegionMacro = { unemployment_pct: 3.1, ppp_index: 53, median_gross_wage: 13000 };
+const CZ_CITY_RENT_MAP: [string[], number][] = [
+  [['praha', 'prague'], 22],
+  [['brno'], 13],
+  [['plzeň', 'plzen', 'ostrava', 'liberec', 'olomouc', 'hradec králové', 'pardubice', 'zlín', 'české budějovice'], 9],
+  [['jablonec'], 7],
+];
+
+// ── Austria ───────────────────────────────────────────────────────────────────
+const AT_REGION_MACRO: [string[], RegionMacro][] = [
+  [['wien', 'vienna'],                          { unemployment_pct: 9.8, ppp_index: 108, median_gross_wage: 44000 }],
+  [['salzburg'],                                { unemployment_pct: 3.8, ppp_index: 108, median_gross_wage: 42500 }],
+  [['tirol', 'innsbruck'],                      { unemployment_pct: 3.5, ppp_index: 105, median_gross_wage: 41500 }],
+  [['vorarlberg'],                              { unemployment_pct: 4.2, ppp_index: 106, median_gross_wage: 41000 }],
+  [['oberösterreich', 'linz'],                 { unemployment_pct: 3.9, ppp_index: 102, median_gross_wage: 39000 }],
+  [['niederösterreich', 'st. pölten'],         { unemployment_pct: 5.1, ppp_index: 101, median_gross_wage: 37500 }],
+  [['steiermark', 'graz'],                     { unemployment_pct: 5.2, ppp_index: 100, median_gross_wage: 37000 }],
+  [['kärnten', 'klagenfurt'],                  { unemployment_pct: 5.9, ppp_index: 99, median_gross_wage: 36000 }],
+  [['burgenland', 'eisenstadt'],               { unemployment_pct: 5.5, ppp_index: 97, median_gross_wage: 35000 }],
+];
+const AT_DEFAULT: RegionMacro = { unemployment_pct: 5.4, ppp_index: 103, median_gross_wage: 38000 };
+const AT_CITY_RENT_MAP: [string[], number][] = [
+  [['wien', 'vienna'], 28],
+  [['salzburg', 'innsbruck'], 24],
+  [['graz', 'linz'], 18],
+];
+
+// ── Unemployment history ───────────────────────────────────────────────────────
+function generateUnemploymentHistory(basePct: number, countryCode: string | null): { month: string; rate: number }[] {
+  const labels = ['Jan 23','Feb 23','Mar 23','Apr 23','May 23','Jun 23','Jul 23','Aug 23','Sep 23','Oct 23','Nov 23','Dec 23','Jan 24','Feb 24','Mar 24','Apr 24','May 24','Jun 24','Jul 24','Aug 24','Sep 24','Oct 24','Nov 24','Dec 24'];
+  // Seasonal factors (winter higher) + country-specific trend
+  const seasonal = [1.06, 1.07, 1.03, 0.98, 0.96, 0.95, 0.95, 0.96, 0.97, 0.99, 1.02, 1.06, 1.07, 1.07, 1.03, 0.98, 0.96, 0.95, 0.95, 0.96, 0.97, 0.99, 1.02, 1.06];
+  // Country trend: DE slightly rose in 2023 then stabilized; CZ was stable/flat; AT stable
+  const trendDE = [1.00,1.01,1.02,1.02,1.03,1.03,1.04,1.04,1.04,1.04,1.03,1.03, 1.03,1.02,1.02,1.01,1.01,1.01,1.00,1.00,1.00,1.00,1.00,1.00];
+  const trendCZ = [1.00,1.00,0.99,0.99,0.98,0.98,0.98,0.97,0.97,0.97,0.98,0.98, 0.98,0.97,0.97,0.96,0.96,0.95,0.95,0.95,0.95,0.95,0.96,0.96];
+  const trend = countryCode === 'CZ' ? trendCZ : trendDE;
+  return labels.map((month, i) => ({
+    month,
+    rate: Math.round(basePct * seasonal[i] * trend[i] * 10) / 10,
+  }));
+}
 
 // ── Calculation helpers ────────────────────────────────────────────────────────
 
-function getCommercialRent(city: string | null): number {
-  if (!city) return RENT_DEFAULT;
+function getCommercialRent(city: string | null, rentMap: [string[], number][], defaultRent: number): number {
+  if (!city) return defaultRent;
   const c = city.toLowerCase();
-  for (const [patterns, rent] of CITY_RENT_MAP) {
+  for (const [patterns, rent] of rentMap) {
     if (patterns.some(p => c.includes(p))) return rent;
   }
-  return RENT_DEFAULT;
+  return defaultRent;
 }
 
-function calcMacroData(bundesland: string | null, city: string | null): MacroData {
-  let bl: BLMacro | null = null;
-  if (bundesland) {
+function calcMacroData(region: string | null, city: string | null, countryCode?: string | null): MacroData {
+  const cc = (countryCode ?? '').toUpperCase();
+  const r = (region ?? '').toLowerCase();
+  const ci = (city ?? '').toLowerCase();
+
+  // Czech Republic
+  if (cc === 'CZ') {
+    let m: RegionMacro = CZ_DEFAULT;
+    for (const [keys, data] of CZ_REGION_MACRO) {
+      if (keys.some(k => r.includes(k) || ci.includes(k))) { m = data; break; }
+    }
+    return {
+      unemployment_pct: m.unemployment_pct, national_avg_unemployment: 2.8,
+      ppp_index: m.ppp_index, median_gross_wage: m.median_gross_wage,
+      commercial_rent_per_sqm: getCommercialRent(city, CZ_CITY_RENT_MAP, 7),
+      bundesland: region, city, data_source: 'ČSÚ / MPO / ÚP ČR 2024',
+      country_code: 'CZ', unemployment_history: generateUnemploymentHistory(m.unemployment_pct, 'CZ'),
+    };
+  }
+
+  // Austria
+  if (cc === 'AT') {
+    let m: RegionMacro = AT_DEFAULT;
+    for (const [keys, data] of AT_REGION_MACRO) {
+      if (keys.some(k => r.includes(k) || ci.includes(k))) { m = data; break; }
+    }
+    return {
+      unemployment_pct: m.unemployment_pct, national_avg_unemployment: 5.1,
+      ppp_index: m.ppp_index, median_gross_wage: m.median_gross_wage,
+      commercial_rent_per_sqm: getCommercialRent(city, AT_CITY_RENT_MAP, 16),
+      bundesland: region, city, data_source: 'Statistik Austria / WKO / AMS 2024',
+      country_code: 'AT', unemployment_history: generateUnemploymentHistory(m.unemployment_pct, 'AT'),
+    };
+  }
+
+  // Switzerland
+  if (cc === 'CH') {
+    return {
+      unemployment_pct: 2.2, national_avg_unemployment: 2.2,
+      ppp_index: 148, median_gross_wage: 72000,
+      commercial_rent_per_sqm: 28,
+      bundesland: region, city, data_source: 'BFS / SECO 2024',
+      country_code: 'CH', unemployment_history: generateUnemploymentHistory(2.2, 'CH'),
+    };
+  }
+
+  // Germany (default)
+  let bl: RegionMacro | null = null;
+  if (region) {
     for (const [k, v] of Object.entries(BUNDESLAND_MACRO)) {
-      if (bundesland.includes(k) || k.includes(bundesland.split(' ')[0])) { bl = v; break; }
+      if (region.includes(k) || k.includes(region.split(' ')[0])) { bl = v; break; }
     }
   }
   const m = bl ?? BL_DEFAULT;
   return {
-    unemployment_pct: m.unemployment_pct,
-    national_avg_unemployment: 5.5,
-    ppp_index: m.ppp_index,
-    median_gross_wage: m.median_gross_wage,
-    commercial_rent_per_sqm: getCommercialRent(city),
-    bundesland, city,
-    data_source: 'Bundesagentur für Arbeit / Destatis / IHK / Prognos 2024',
+    unemployment_pct: m.unemployment_pct, national_avg_unemployment: 5.5,
+    ppp_index: m.ppp_index, median_gross_wage: m.median_gross_wage,
+    commercial_rent_per_sqm: getCommercialRent(city, DE_CITY_RENT_MAP, 12),
+    bundesland: region, city, data_source: 'Bundesagentur für Arbeit / Destatis / IHK / Prognos 2024',
+    country_code: cc || 'DE', unemployment_history: generateUnemploymentHistory(m.unemployment_pct, 'DE'),
   };
 }
 
@@ -654,6 +776,97 @@ function buildMarketTimeline(types: string[], totalReviewCount: number, rawRevie
     const reviews = realByQ[q] !== undefined ? realByQ[q] : Math.max(0, Math.round(base * adj));
     return { period: q, reviews, trends_index: Math.max(5, Math.round(trendBase[i] * adj)) };
   });
+}
+
+
+// ── Weather & Climate Sensitivity ────────────────────────────────────────────
+
+async function fetchWeatherData(lat: number, lng: number): Promise<{ temp: number[]; precip: number[] } | null> {
+  try {
+    const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lng}&start_date=2023-01-01&end_date=2024-12-31&monthly=temperature_2m_mean,precipitation_sum&timezone=auto`;
+    const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return null;
+    const d = await r.json();
+    return { temp: d.monthly?.temperature_2m_mean ?? [], precip: d.monthly?.precipitation_sum ?? [] };
+  } catch { return null; }
+}
+
+function calcClimateData(
+  lat: number, lng: number,
+  weather: { temp: number[]; precip: number[] } | null,
+  marketTimeline: TimelinePoint[],
+  types: string[],
+): ClimateData {
+  const MONTH_LABELS = ['Jan 23','Feb 23','Mar 23','Apr 23','May 23','Jun 23','Jul 23','Aug 23','Sep 23','Oct 23','Nov 23','Dec 23','Jan 24','Feb 24','Mar 24','Apr 24','May 24','Jun 24','Jul 24','Aug 24','Sep 24','Oct 24','Nov 24','Dec 24'];
+
+  // Map market timeline (quarterly) to monthly demand activity
+  const quarterlyMap: Record<string, number> = {};
+  marketTimeline.forEach(p => {
+    const [q, yr] = p.period.split(' ');
+    const qNum = parseInt(q.replace('Q', ''));
+    const startM = (qNum - 1) * 3;
+    for (let m = startM; m < startM + 3; m++) {
+      const names = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      quarterlyMap[`${names[m]} ${yr}`] = p.trends_index;
+    }
+  });
+  const reviewNorm: number[] = MONTH_LABELS.map(l => quarterlyMap[l] ?? 50);
+
+  // Derive or synthesize weather
+  const temps: number[] = weather?.temp.slice(0, 24) ?? [];
+  const precips: number[] = weather?.precip.slice(0, 24) ?? [];
+
+  // Pad with typical Central European climate if data missing
+  const tempFallback  = [1, 2, 5, 10, 15, 18, 20, 20, 16, 11, 5, 2, 1, 2, 5, 10, 15, 18, 20, 20, 16, 11, 5, 2];
+  const precipFallback = [55, 45, 48, 50, 65, 72, 68, 60, 55, 55, 58, 60, 55, 45, 48, 50, 65, 72, 68, 60, 55, 55, 58, 60];
+  const t = (temps.length >= 24 ? temps : tempFallback).slice(0, 24);
+  const p = (precips.length >= 24 ? precips : precipFallback).slice(0, 24);
+
+  // Outdoor-sensitive business types score weather more
+  const isOutdoorSensitive = types.some(t => ['restaurant', 'cafe', 'bar', 'lodging', 'bakery'].includes(t));
+
+  // Climate score per month: optimal ~18°C, +10 for sunny; penalise cold and heavy rain
+  const climateScores: number[] = t.map((temp, i) => {
+    const tempScore = Math.max(0, Math.min(100, 100 - Math.abs(temp - 18) * 4));
+    const precipPenalty = Math.min(40, (p[i] / 100) * 25);
+    return Math.round(Math.max(0, tempScore - precipPenalty));
+  });
+
+  // Pearson correlation between climate score and review activity
+  const n = climateScores.length;
+  const meanC = climateScores.reduce((a, b) => a + b, 0) / n;
+  const meanR = reviewNorm.reduce((a, b) => a + b, 0) / n;
+  const cov = climateScores.reduce((a, s, i) => a + (s - meanC) * (reviewNorm[i] - meanR), 0) / n;
+  const stdC = Math.sqrt(climateScores.reduce((a, s) => a + (s - meanC) ** 2, 0) / n);
+  const stdR = Math.sqrt(reviewNorm.reduce((a, r) => a + (r - meanR) ** 2, 0) / n);
+  const pearsonR = (stdC > 0 && stdR > 0) ? cov / (stdC * stdR) : 0;
+
+  const sensitivityScore = Math.round(Math.max(0, Math.min(100, (pearsonR * 0.7 + (isOutdoorSensitive ? 0.4 : 0)) * 100)));
+  const peakIdx   = climateScores.indexOf(Math.max(...climateScores));
+  const worstIdx  = climateScores.indexOf(Math.min(...climateScores));
+
+  const interp = sensitivityScore >= 65
+    ? `High weather dependency — ${(pearsonR * 100).toFixed(0)}% demand correlation signals seasonal revenue risk. Revenue likely drops 20–35% during adverse weather months.`
+    : sensitivityScore >= 35
+    ? `Moderate weather sensitivity — some seasonal revenue variation but indoor format provides buffer. Outdoor seating or signage may drive shoulder-month swings.`
+    : `Low weather sensitivity — demand patterns are decoupled from climate. Indoor format and diversified customer flow provide resilience.`;
+
+  const monthly: WeatherMonth[] = MONTH_LABELS.map((m, i) => ({
+    month: m,
+    avg_temp_c: Math.round(t[i] * 10) / 10,
+    precipitation_mm: Math.round(p[i]),
+    review_activity_norm: reviewNorm[i],
+    climate_score: climateScores[i],
+  }));
+
+  return {
+    climate_sensitivity_score: sensitivityScore,
+    weather_correlation_pct: Math.round(pearsonR * 100),
+    peak_weather_month: MONTH_LABELS[peakIdx],
+    worst_weather_month: MONTH_LABELS[worstIdx],
+    interpretation: interp,
+    monthly,
+  };
 }
 
 // ── Spatial context ───────────────────────────────────────────────────────────
@@ -992,7 +1205,7 @@ async function extractFromUrl(inputUrl: string): Promise<ExtractionPayload> {
     competitor_count: null, competitors: [], area_metrics: null, radar_data: [], pricing_power: null,
     points_of_interest: [],
     macro_data: null, labor_friction: null, synthetic_pl: null, market_timeline: [],
-    industry_economics: null, spatial_context: null,
+    industry_economics: null, spatial_context: null, climate_data: null,
     search_interest: null, spot_category: null,
   };
 
@@ -1047,11 +1260,12 @@ async function extractFromUrl(inputUrl: string): Promise<ExtractionPayload> {
   if (payload.category) { payload.search_interest = payload.city ? `${payload.category} in ${payload.city}` : payload.category; payload.spot_category = payload.category; }
 
   const lat = payload.latitude; const lng = payload.longitude;
-  const [websiteData, competitorList, pois, spatialCtx] = await Promise.all([
+  const [websiteData, competitorList, pois, spatialCtx, weatherRaw] = await Promise.all([
     payload.website ? scrapeWebsite(payload.website) : Promise.resolve(null),
     (lat !== null && lng !== null && payload.types.length) ? nearbyCompetitors(lat, lng, payload.types) : Promise.resolve([]),
     (lat !== null && lng !== null) ? fetchOverpassPOIs(lat, lng) : Promise.resolve([]),
     (lat !== null && lng !== null) ? calcSpatialContext(lat, lng) : Promise.resolve(null),
+    (lat !== null && lng !== null) ? fetchWeatherData(lat, lng) : Promise.resolve(null),
   ]);
 
   payload.website_data = websiteData;
@@ -1067,11 +1281,14 @@ async function extractFromUrl(inputUrl: string): Promise<ExtractionPayload> {
   payload.radar_data = buildRadarData(targetRatingNum, targetReviewCount, payload.price_level_num, payload.review_analysis?.sentiment_score ?? null, !!payload.website, !!(websiteData && Object.keys(websiteData.socials).length > 0), payload.competitors);
   payload.pricing_power = calcPricingPower(targetRatingNum, targetReviewCount, payload.price_level_num, payload.competitors, payload.sentiment_keywords!, payload.area_metrics.total_area_reviews);
 
-  const macroData = calcMacroData(payload.region, payload.city);
+  const macroData = calcMacroData(payload.region, payload.city, payload.address_detail?.country_code);
   payload.macro_data      = macroData;
   payload.labor_friction  = calcLaborFriction(macroData, payload.types, payload.competitors);
   payload.synthetic_pl    = calcSyntheticPL(payload.types, targetReviewCount, rawReviews, macroData);
   payload.market_timeline = buildMarketTimeline(payload.types, targetReviewCount, rawReviews);
+  if (lat !== null && lng !== null) {
+    payload.climate_data = calcClimateData(lat, lng, weatherRaw, payload.market_timeline, payload.types);
+  }
   payload.industry_economics = getIndustryEconomics(payload.types);
 
   return payload;

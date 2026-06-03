@@ -25,7 +25,7 @@ interface IndustryYearData { year: number; context: string; }
 interface IndustryEconomics { industry_label: string; ebitda_multiple: { low: number; mid: number; high: number }; avg_margin_pct: number | null; market_size_de_bn: number | null; cagr_5y_pct: number | null; trend_summary: string; structural_margins: string; failure_rate_note: string; model_mechanics: string; yearly: IndustryYearData[]; }
 interface CompetitorData { name: string | null; url: string | null; address: string | null; rating: string | null; review_volume: string | null; category: string | null; price_level: string | null; phone: string | null; business_status: string | null; }
 interface TimelinePoint { period: string; reviews: number; trends_index: number; }
-interface MacroData { unemployment_pct: number; national_avg_unemployment: number; ppp_index: number; median_gross_wage: number; commercial_rent_per_sqm: number; bundesland: string | null; city: string | null; data_source: string; }
+interface MacroData { unemployment_pct: number; national_avg_unemployment: number; ppp_index: number; median_gross_wage: number; commercial_rent_per_sqm: number; bundesland: string | null; city: string | null; data_source: string; country_code: string | null; unemployment_history: { month: string; rate: number }[]; }
 interface LaborFriction { index: number; unemployment_pct: number; national_avg_unemployment: number; wage_pressure_flag: boolean; interpretation: string; }
 interface FinancialRange { low: number; mid: number; high: number; }
 interface CostDriver { name: string; severity: 'low' | 'medium' | 'high' | 'critical'; trend: 'improving' | 'stable' | 'worsening'; description: string; ebitda_impact_pct: number; }
@@ -49,6 +49,8 @@ interface SpatialContext {
   foot_traffic_score: number;
   location_economics: string;
 }
+interface WeatherMonth { month: string; avg_temp_c: number; precipitation_mm: number; review_activity_norm: number; climate_score: number; }
+interface ClimateData { climate_sensitivity_score: number; weather_correlation_pct: number; peak_weather_month: string; worst_weather_month: string; interpretation: string; monthly: WeatherMonth[]; }
 
 interface ExtractionData {
   place_id: string | null; name: string | null; types: string[]; category: string | null; business_status: string | null; summary: string | null;
@@ -70,6 +72,7 @@ interface ExtractionData {
   synthetic_pl: SyntheticPL | null; market_timeline: TimelinePoint[];
   spatial_context: SpatialContext | null;
   search_interest: string | null; spot_category: string | null;
+  climate_data: ClimateData | null;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -88,7 +91,7 @@ function CopyBtn({ value, display }: { value: string; display?: React.ReactNode 
   const [copied, setCopied] = useState(false);
   return (
     <button onClick={() => { navigator.clipboard.writeText(value).catch(() => {}); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
-      className="copy-btn" style={{ color: copied ? '#4e9a66' : '#94a3b8' }}>
+      className="copy-btn" style={{ color: copied ? '#1db954' : '#4e9a66' }}>
       {copied ? '✓ copied' : (display ?? (value || '—'))}
     </button>
   );
@@ -97,7 +100,7 @@ function CopyBtn({ value, display }: { value: string; display?: React.ReactNode 
 // ── Design system primitives ───────────────────────────────────────────────────
 
 function Divider() {
-  return <div style={{ height: 1, background: 'rgba(148,163,184,0.08)', margin: '28px 0' }} />;
+  return <div style={{ height: 1, background: 'rgba(0,0,0,0.06)', margin: '28px 0' }} />;
 }
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
@@ -131,7 +134,7 @@ function AQIGauge({ index }: { index: number }) {
       <ResponsiveContainer width="100%" height={140}>
         <RadialBarChart cx="50%" cy="76%" innerRadius="60%" outerRadius="100%" startAngle={180} endAngle={0} data={[{ name: 'AQI', value: index, fill: color }]} barSize={20}>
           <RadialBar background dataKey="value" cornerRadius={5} />
-          <Tooltip contentStyle={{ background: '#1c1c1c', border: '1px solid rgba(255,255,255,0.08)', color: '#94a3b8', fontSize: 11 }} formatter={(v: number) => [`${v}/100`, 'AQI']} />
+          <Tooltip contentStyle={{ background: '#ffffff', border: '1px solid #e5e5e5', color: '#666666', fontSize: 11 }} formatter={(v: number) => [`${v}/100`, 'AQI']} />
         </RadialBarChart>
       </ResponsiveContainer>
       <div style={{ marginTop: -24, fontSize: '1.7rem', fontWeight: 800, color, fontVariantNumeric: 'tabular-nums' }}>{index}</div>
@@ -147,7 +150,7 @@ function LFIGauge({ index }: { index: number }) {
       <ResponsiveContainer width="100%" height={140}>
         <RadialBarChart cx="50%" cy="76%" innerRadius="60%" outerRadius="100%" startAngle={180} endAngle={0} data={[{ name: 'LFI', value: index, fill: color }]} barSize={20}>
           <RadialBar background dataKey="value" cornerRadius={5} />
-          <Tooltip contentStyle={{ background: '#1c1c1c', border: '1px solid rgba(255,255,255,0.08)', color: '#94a3b8', fontSize: 11 }} formatter={(v: number) => [`${v}/100`, 'LFI']} />
+          <Tooltip contentStyle={{ background: '#ffffff', border: '1px solid #e5e5e5', color: '#666666', fontSize: 11 }} formatter={(v: number) => [`${v}/100`, 'LFI']} />
         </RadialBarChart>
       </ResponsiveContainer>
       <div style={{ marginTop: -24, fontSize: '1.7rem', fontWeight: 800, color, fontVariantNumeric: 'tabular-nums' }}>{index}</div>
@@ -161,13 +164,13 @@ function CompetitorRadar({ data }: { data: RadarPoint[] }) {
   return (
     <ResponsiveContainer width="100%" height={240}>
       <RadarChart data={data} margin={{ top: 8, right: 16, bottom: 8, left: 16 }}>
-        <PolarGrid stroke="rgba(148,163,184,0.12)" />
+        <PolarGrid stroke="rgba(0,0,0,0.08)" />
         <PolarAngleAxis dataKey="metric" tick={{ fill: '#666666', fontSize: 10 }} />
         <PolarRadiusAxis angle={90} domain={[0, 100]} tick={false} axisLine={false} />
         <Radar name="This business" dataKey="target" stroke="#4e9a66" fill="#4e9a66" fillOpacity={0.2} strokeWidth={1.5} />
         <Radar name="Market avg" dataKey="market" stroke="#fbbf24" fill="#fbbf24" fillOpacity={0.08} strokeWidth={1} strokeDasharray="4 3" />
         <Legend iconType="plainline" wrapperStyle={{ fontSize: 10, color: '#666666' }} />
-        <Tooltip contentStyle={{ background: '#1c1c1c', border: '1px solid rgba(255,255,255,0.08)', color: '#94a3b8', fontSize: 11 }} formatter={(v: number, n: string) => [`${v}/100`, n]} />
+        <Tooltip contentStyle={{ background: '#ffffff', border: '1px solid #e5e5e5', color: '#666666', fontSize: 11 }} formatter={(v: number, n: string) => [`${v}/100`, n]} />
       </RadarChart>
     </ResponsiveContainer>
   );
@@ -183,7 +186,7 @@ function MarketTimeline({ points }: { points: TimelinePoint[] }) {
         <CartesianGrid stroke="rgba(148,163,184,0.06)" vertical={false} />
         <XAxis dataKey="period" tick={{ fill: '#444444', fontSize: 9 }} interval={4} angle={-30} textAnchor="end" axisLine={false} tickLine={false} />
         <YAxis domain={[0, 130]} tick={{ fill: '#444444', fontSize: 9 }} axisLine={false} tickLine={false} />
-        <Tooltip contentStyle={{ background: '#1c1c1c', border: '1px solid rgba(255,255,255,0.08)', color: '#94a3b8', fontSize: 11 }}
+        <Tooltip contentStyle={{ background: '#ffffff', border: '1px solid #e5e5e5', color: '#666666', fontSize: 11 }}
           formatter={(v: number, name: string) => [name === 'trends_index' ? `${v} market idx` : `${v}/100 review act.`, name === 'trends_index' ? 'Market Index' : 'Review Activity']} />
         <Line type="monotone" dataKey="trends_index" name="Market Index" stroke="#4e9a66" strokeWidth={1.5} dot={false} />
         <Line type="monotone" dataKey="reviews_norm" name="Review Activity" stroke="#fbbf24" strokeWidth={1} dot={false} strokeDasharray="4 2" />
@@ -203,7 +206,7 @@ function RangeBar({ range, formatter = fmtEur, label }: { range: FinancialRange;
       {label && <div style={{ fontSize: '0.72rem', color: '#666666', marginBottom: 4 }}>{label}</div>}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <span style={{ fontSize: '0.77rem', color: '#444444', minWidth: 52, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{formatter(range.low)}</span>
-        <div style={{ flex: 1, height: 6, background: 'rgba(148,163,184,0.1)', borderRadius: 3, position: 'relative' }}>
+        <div style={{ flex: 1, height: 6, background: 'rgba(0,0,0,0.06)', borderRadius: 3, position: 'relative' }}>
           <div style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, background: 'rgba(78,154,102,0.12)', borderRadius: 3 }} />
           <div style={{ position: 'absolute', left: `${midPct}%`, transform: 'translateX(-50%)', top: -2, width: 10, height: 10, borderRadius: '50%', background: isNegative ? '#f87171' : '#4e9a66', border: '2px solid #0f172a' }} />
         </div>
@@ -224,7 +227,7 @@ function ProbabilisticRevChart({ pl }: { pl: SyntheticPL }) {
     base: g(pl.revenue.mid,  0.04, y),
     bull: g(pl.revenue.high, 0.08, y),
   }));
-  const tip = { background: '#1c1c1c', border: '1px solid rgba(255,255,255,0.08)', color: '#888', fontSize: 11 };
+  const tip = { background: '#ffffff', border: '1px solid #e5e5e5', color: '#888', fontSize: 11 };
   return (
     <div style={{ marginBottom: 20 }}>
       <div style={{ fontSize: '0.7rem', color: '#666666', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: 10 }}>
@@ -238,7 +241,7 @@ function ProbabilisticRevChart({ pl }: { pl: SyntheticPL }) {
           <Tooltip contentStyle={tip} formatter={(v: number, name: string) => [fmtEur(v as number), name === 'bear' ? 'Bear' : name === 'base' ? 'Base' : 'Bull']} />
           {/* Confidence band: bull area then bear area masks below */}
           <Area type="monotone" dataKey="bull" stroke="none" fill="#4e9a66" fillOpacity={0.14} legendType="none" />
-          <Area type="monotone" dataKey="bear" stroke="none" fill="#111111" fillOpacity={1} legendType="none" />
+          <Area type="monotone" dataKey="bear" stroke="none" fill="#f5f5f5" fillOpacity={1} legendType="none" />
           {/* Scenario lines */}
           <Line type="monotone" dataKey="bear" stroke="#f87171" strokeWidth={1.5} dot={false} name="Bear" strokeDasharray="4 3" />
           <Line type="monotone" dataKey="base" stroke="#1db954" strokeWidth={2.5} dot={{ fill: '#1db954', r: 3 }} name="Base" />
@@ -281,7 +284,7 @@ function AbstractSpatialMap({ sc, pois, r }: { sc: SpatialContext; pois: PointOf
         Abstract Spatial Context
       </div>
       <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-        <svg width={W} height={H} style={{ background: '#161616', borderRadius: 12, border: '1px solid rgba(255,255,255,0.06)', flexShrink: 0 }}>
+        <svg width={W} height={H} style={{ background: '#f8f8f8', borderRadius: 12, border: '1px solid rgba(255,255,255,0.06)', flexShrink: 0 }}>
           {/* Distance rings */}
           {[200, 500, 1000].map(m => (
             <circle key={m} cx={CX} cy={CY} r={m * scale}
@@ -290,7 +293,7 @@ function AbstractSpatialMap({ sc, pois, r }: { sc: SpatialContext; pois: PointOf
           ))}
           {/* Ring labels */}
           {[200, 500, 1000].map(m => (
-            <text key={m} x={CX + m * scale + 4} y={CY + 4} fontSize={8} fill="rgba(255,255,255,0.18)" fontFamily="Helvetica Neue, sans-serif">{m}m</text>
+            <text key={m} x={CX + m * scale + 4} y={CY + 4} fontSize={8} fill="rgba(0,0,0,0.25)" fontFamily="Helvetica Neue, sans-serif">{m}m</text>
           ))}
           {/* POI dots */}
           {pois.slice(0, 40).map(poi => {
@@ -319,7 +322,7 @@ function AbstractSpatialMap({ sc, pois, r }: { sc: SpatialContext; pois: PointOf
             <>
               <line x1={CX} y1={CY} x2={CX - 40} y2={CY + 30}
                 stroke="rgba(255,255,255,0.18)" strokeWidth={1} strokeDasharray="3 4" />
-              <text x={CX - 80} y={CY + 42} fontSize={8} fill="rgba(255,255,255,0.3)" fontFamily="Helvetica Neue, sans-serif">
+              <text x={CX - 80} y={CY + 42} fontSize={8} fill="rgba(0,0,0,0.35)" fontFamily="Helvetica Neue, sans-serif">
                 City Centre {(sc.city_center_distance_m / 1000).toFixed(1)}km
               </text>
             </>
@@ -357,11 +360,11 @@ function AbstractSpatialMap({ sc, pois, r }: { sc: SpatialContext; pois: PointOf
 function PLRangeTable({ pl }: { pl: SyntheticPL }) {
   const rows: { label: string; range?: FinancialRange; single?: number; sub?: boolean; bold?: boolean; accent?: string; }[] = [
     { label: 'Revenue', range: pl.revenue, bold: true },
-    { label: `COGS (${(100 - pl.gross_margin_pct).toFixed(0)}%)`, range: { low: -pl.cogs.high, mid: -pl.cogs.mid, high: -pl.cogs.low }, sub: true },
+    { label: `COGS (${(100 - pl.gross_margin_pct).toFixed(0)}%)`, range: { low: -pl.cogs.low, mid: -pl.cogs.mid, high: -pl.cogs.high }, sub: true },
     { label: `Gross Profit (${pl.gross_margin_pct}%)`, range: pl.gross_profit, bold: true, accent: '#4e9a66' },
     { label: `Personnel — ${pl.fte_estimate} FTE`, single: -pl.personnel_cost, sub: true },
     { label: `Facility — ${pl.facility_sqm}m²`, single: -pl.facility_cost, sub: true },
-    { label: 'Other OpEx (8% var.)', range: { low: -pl.other_opex.high, mid: -pl.other_opex.mid, high: -pl.other_opex.low }, sub: true },
+    { label: 'Other OpEx (8% var.)', range: { low: -pl.other_opex.low, mid: -pl.other_opex.mid, high: -pl.other_opex.high }, sub: true },
     { label: 'EBITDA', range: pl.ebitda, bold: true, accent: pl.ebitda.mid >= 0 ? '#4ade80' : '#f87171' },
   ];
 
@@ -411,9 +414,9 @@ function DependencyMatrixBlock({ dm }: { dm: DependencyMatrix }) {
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {dm.drivers.map((d, i) => (
-          <div key={i} style={{ display: 'grid', gridTemplateColumns: '180px 1fr 70px 60px', gap: 12, alignItems: 'start', padding: '10px 12px', borderRadius: 6, background: 'rgba(148,163,184,0.03)', borderLeft: `3px solid ${severityColor[d.severity]}40` }}>
+          <div key={i} style={{ display: 'grid', gridTemplateColumns: '180px 1fr 70px 60px', gap: 12, alignItems: 'start', padding: '10px 12px', borderRadius: 6, background: 'rgba(0,0,0,0.03)', borderLeft: `3px solid ${severityColor[d.severity]}40` }}>
             <div>
-              <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#94a3b8', marginBottom: 2 }}>{d.name}</div>
+              <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#666666', marginBottom: 2 }}>{d.name}</div>
               <span style={{ fontSize: '0.68rem', padding: '1px 6px', borderRadius: 4, background: `${severityColor[d.severity]}18`, color: severityColor[d.severity] }}>{d.severity}</span>
             </div>
             <div style={{ fontSize: '0.77rem', color: '#666666', lineHeight: 1.5 }}>{d.description}</div>
@@ -441,6 +444,116 @@ function SanityBadge({ sc }: { sc: SanityCheck }) {
   );
 }
 
+
+
+// ── Task 3: Climate Sensitivity Chart ─────────────────────────────────────────
+
+function ClimateSensitivityChart({ cd }: { cd: ClimateData }) {
+  const tip = { background: '#ffffff', border: '1px solid #e5e5e5', color: '#666', fontSize: 11 };
+  const scoreColor = cd.climate_sensitivity_score >= 65 ? '#f87171' : cd.climate_sensitivity_score >= 35 ? '#fbbf24' : '#1db954';
+  return (
+    <div style={{ marginTop: 4 }}>
+      {/* Score header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+        <div>
+          <div style={{ fontSize: '0.7rem', color: '#999', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: 4 }}>
+            Climate Sensitivity Score
+          </div>
+          <div style={{ fontSize: '2rem', fontWeight: 900, color: scoreColor, letterSpacing: '-0.04em', lineHeight: 1 }}>
+            {cd.climate_sensitivity_score}
+            <span style={{ fontSize: '1rem', color: '#aaa', fontWeight: 400 }}>/100</span>
+          </div>
+          <div style={{ fontSize: '0.75rem', color: '#888', marginTop: 4, maxWidth: 380, lineHeight: 1.5 }}>{cd.interpretation}</div>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, textAlign: 'right', fontSize: '0.78rem' }}>
+          <div><span style={{ color: '#999' }}>Demand correlation:</span> <span style={{ fontWeight: 700, color: cd.weather_correlation_pct >= 50 ? '#f87171' : '#1db954' }}>{cd.weather_correlation_pct}%</span></div>
+          <div><span style={{ color: '#999' }}>Best month:</span> <span style={{ fontWeight: 600, color: '#1db954' }}>{cd.peak_weather_month}</span></div>
+          <div><span style={{ color: '#999' }}>Worst month:</span> <span style={{ fontWeight: 600, color: '#f87171' }}>{cd.worst_weather_month}</span></div>
+        </div>
+      </div>
+      {/* Chart */}
+      <ResponsiveContainer width="100%" height={200}>
+        <ComposedChart data={cd.monthly} margin={{ top: 4, right: 16, bottom: 16, left: 4 }}>
+          <CartesianGrid stroke="rgba(0,0,0,0.05)" vertical={false} />
+          <XAxis dataKey="month" tick={{ fill: '#bbb', fontSize: 9 }} interval={3} angle={-30} textAnchor="end" axisLine={false} tickLine={false} />
+          <YAxis yAxisId="temp" domain={[-5, 35]} tick={{ fill: '#bbb', fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={v => `${v}°`} width={28} />
+          <YAxis yAxisId="score" orientation="right" domain={[0, 110]} tick={{ fill: '#bbb', fontSize: 9 }} axisLine={false} tickLine={false} />
+          <Tooltip contentStyle={tip}
+            formatter={(v: number, name: string) => {
+              if (name === 'avg_temp_c') return [`${v}°C`, 'Avg Temp'];
+              if (name === 'climate_score') return [`${v}/100`, 'Climate Score'];
+              if (name === 'review_activity_norm') return [`${v} idx`, 'Demand Index'];
+              return [v, name];
+            }} />
+          {/* Temperature as bar */}
+          <Bar yAxisId="temp" dataKey="avg_temp_c" fill="#e8f4f8" fillOpacity={0.8} barSize={8} radius={[2,2,0,0]} name="avg_temp_c" />
+          {/* Climate score line */}
+          <Line yAxisId="score" type="monotone" dataKey="climate_score" stroke="#4e9a66" strokeWidth={2} dot={false} name="climate_score" />
+          {/* Demand activity line */}
+          <Line yAxisId="score" type="monotone" dataKey="review_activity_norm" stroke="#fbbf24" strokeWidth={1.5} dot={false} strokeDasharray="4 2" name="review_activity_norm" />
+        </ComposedChart>
+      </ResponsiveContainer>
+      <div style={{ fontSize: '0.72rem', color: '#bbbbbb', lineHeight: 1.5, marginTop: 2 }}>
+        <span style={{ color: '#4e9a66', fontWeight: 600 }}>Climate score</span> — comfort index (100 = ideal trading weather, ~18°C low rain).&nbsp;
+        <span style={{ color: '#fbbf24', fontWeight: 600 }}>Demand index</span> — normalized review activity. Correlation = weather sensitivity of revenue.
+        Source: Open-Meteo archive.
+      </div>
+    </div>
+  );
+}
+
+// ── Task 3: Unemployment & Demand Trend Chart ──────────────────────────────────
+
+function UnemploymentTrendChart({ md, mt }: { md: MacroData; mt: TimelinePoint[] }) {
+  if (!md.unemployment_history || md.unemployment_history.length === 0) return null;
+
+  // Map market timeline (quarterly) to monthly scale by repeating each quarter 3 times
+  const trendByMonth: Record<string, number> = {};
+  mt.forEach(p => {
+    const [q, yr] = p.period.split(' ');
+    const qNum = parseInt(q.replace('Q', ''));
+    const months = [(qNum - 1) * 3, (qNum - 1) * 3 + 1, (qNum - 1) * 3 + 2];
+    const names = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    months.forEach(m => {
+      const key = `${names[m]} ${yr.slice(-2) === '20' ? yr : yr}`;
+      trendByMonth[key] = p.trends_index;
+    });
+  });
+
+  const data = md.unemployment_history.map(h => ({
+    month: h.month,
+    rate: h.rate,
+    demand: trendByMonth[h.month] ?? null,
+  }));
+
+  const minRate = Math.max(0, Math.min(...data.map(d => d.rate)) - 0.5);
+  const maxRate = Math.max(...data.map(d => d.rate)) + 0.5;
+  const tip = { background: '#ffffff', border: '1px solid #e5e5e5', color: '#666666', fontSize: 11 };
+
+  return (
+    <div style={{ marginTop: 16, marginBottom: 4 }}>
+      <div style={{ fontSize: '0.7rem', color: '#999999', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: 8 }}>
+        Regional Unemployment Rate (Jan 2023 – Dec 2024)
+      </div>
+      <ResponsiveContainer width="100%" height={180}>
+        <ComposedChart data={data} margin={{ top: 4, right: 16, bottom: 16, left: 4 }}>
+          <CartesianGrid stroke="rgba(0,0,0,0.05)" vertical={false} />
+          <XAxis dataKey="month" tick={{ fill: '#aaa', fontSize: 9 }} interval={3} angle={-30} textAnchor="end" axisLine={false} tickLine={false} />
+          <YAxis yAxisId="left" domain={[minRate, maxRate]} tick={{ fill: '#aaa', fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={v => `${v}%`} width={32} />
+          <YAxis yAxisId="right" orientation="right" domain={[0, 130]} tick={{ fill: '#aaa', fontSize: 9 }} axisLine={false} tickLine={false} />
+          <Tooltip contentStyle={tip} formatter={(v: number, name: string) => [name === 'rate' ? `${v}%` : `${v} idx`, name === 'rate' ? 'Unemployment' : 'Demand Index']} />
+          <Bar yAxisId="left" dataKey="rate" fill="#e8e8e8" fillOpacity={0.9} barSize={8} radius={[2, 2, 0, 0]} name="rate" />
+          <Line yAxisId="right" type="monotone" dataKey="demand" stroke="#1db954" strokeWidth={2} dot={false} name="demand" connectNulls />
+        </ComposedChart>
+      </ResponsiveContainer>
+      <div style={{ fontSize: '0.73rem', color: '#aaaaaa', lineHeight: 1.5, marginTop: 4 }}>
+        <span style={{ color: '#1db954', fontWeight: 600 }}>Demand index</span> (right axis) — normalized category search interest correlated with unemployment trajectory.
+        Source: {md.data_source}.
+      </div>
+    </div>
+  );
+}
+
 // ── PPP Bar ────────────────────────────────────────────────────────────────────
 
 function PPPBar({ macro }: { macro: MacroData }) {
@@ -454,8 +567,8 @@ function PPPBar({ macro }: { macro: MacroData }) {
         <CartesianGrid horizontal={false} stroke="rgba(148,163,184,0.06)" />
         <XAxis type="number" domain={[75, 120]} tick={{ fill: '#444444', fontSize: 10 }} axisLine={false} tickLine={false} />
         <YAxis type="category" dataKey="label" tick={{ fill: '#666666', fontSize: 10 }} axisLine={false} tickLine={false} width={80} />
-        <ReferenceLine x={100} stroke="rgba(148,163,184,0.25)" strokeDasharray="3 3" />
-        <Tooltip contentStyle={{ background: '#1c1c1c', border: '1px solid rgba(255,255,255,0.08)', color: '#94a3b8', fontSize: 11 }} formatter={(v: number) => [`${v.toFixed(1)}`, 'PPP Index']} />
+        <ReferenceLine x={100} stroke="rgba(0,0,0,0.18)" strokeDasharray="3 3" />
+        <Tooltip contentStyle={{ background: '#ffffff', border: '1px solid #e5e5e5', color: '#666666', fontSize: 11 }} formatter={(v: number) => [`${v.toFixed(1)}`, 'PPP Index']} />
         <Bar dataKey="value" radius={[0, 3, 3, 0]} barSize={24}>
           {data.map((e, i) => <Cell key={i} fill={e.fill} fillOpacity={0.75} />)}
         </Bar>
@@ -481,7 +594,7 @@ function EbitdaBenchmark({ pl }: { pl: SyntheticPL }) {
         <XAxis type="number" tickFormatter={v => `${v}%`} tick={{ fill: '#444444', fontSize: 10 }} axisLine={false} tickLine={false} />
         <YAxis type="category" dataKey="label" tick={{ fill: '#666666', fontSize: 10 }} axisLine={false} tickLine={false} width={54} />
         <ReferenceLine x={pl.industry_avg_ebitda_margin} stroke="rgba(78,154,102,0.3)" strokeDasharray="3 3" />
-        <Tooltip contentStyle={{ background: '#1c1c1c', border: '1px solid rgba(255,255,255,0.08)', color: '#94a3b8', fontSize: 11 }} formatter={(v: number) => [`${v.toFixed(1)}%`, 'EBITDA Margin']} />
+        <Tooltip contentStyle={{ background: '#ffffff', border: '1px solid #e5e5e5', color: '#666666', fontSize: 11 }} formatter={(v: number) => [`${v.toFixed(1)}%`, 'EBITDA Margin']} />
         <Bar dataKey="value" radius={[0, 3, 3, 0]} barSize={20}>
           {data.map((e, i) => <Cell key={i} fill={e.fill} fillOpacity={0.8} />)}
         </Bar>
@@ -496,7 +609,7 @@ function FootTrafficBar({ score }: { score: number }) {
   const color = score >= 70 ? '#4ade80' : score >= 45 ? '#fbbf24' : '#f87171';
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-      <div style={{ flex: 1, height: 6, background: 'rgba(148,163,184,0.1)', borderRadius: 3 }}>
+      <div style={{ flex: 1, height: 6, background: 'rgba(0,0,0,0.06)', borderRadius: 3 }}>
         <div style={{ width: `${score}%`, height: '100%', background: color, borderRadius: 3 }} />
       </div>
       <span style={{ fontSize: '0.85rem', fontWeight: 700, color, minWidth: 38, fontVariantNumeric: 'tabular-nums' }}>{score}/100</span>
@@ -534,6 +647,7 @@ function ResultCard({ r }: { r: ExtractionData }) {
   const pl  = r.synthetic_pl;
   const mt  = r.market_timeline ?? [];
   const sc  = r.spatial_context;
+  const cd  = r.climate_data;
 
   const coords = r.latitude != null && r.longitude != null ? `${r.latitude.toFixed(6)}, ${r.longitude.toFixed(6)}` : null;
   const statusColor = r.business_status === 'OPERATIONAL' ? '#4ade80' : r.business_status === 'CLOSED_TEMPORARILY' ? '#facc15' : '#f87171';
@@ -550,7 +664,7 @@ function ResultCard({ r }: { r: ExtractionData }) {
 
       {/* ═══ IDENTITY ═══ */}
       <div style={{ marginBottom: 20 }}>
-        <h2 style={{ margin: '0 0 8px', fontSize: '1.4rem', fontWeight: 800, color: '#e2e8f0' }}>{r.name || 'Unknown business'}</h2>
+        <h2 style={{ margin: '0 0 8px', fontSize: '1.4rem', fontWeight: 800, color: '#111111' }}>{r.name || 'Unknown business'}</h2>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 10 }}>
           {r.category && <span style={{ fontSize: '0.8rem', color: '#888888', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{r.category.replace(/_/g, ' ')}</span>}
           {r.business_status && <span style={{ fontSize: '0.75rem', color: statusColor, fontWeight: 700 }}>● {r.business_status.replace(/_/g, ' ')}</span>}
@@ -574,7 +688,7 @@ function ResultCard({ r }: { r: ExtractionData }) {
       {pp && (
         <>
           <SectionLabel>Pricing Power Signal</SectionLabel>
-          <div style={{ padding: '14px 16px', borderRadius: 8, background: pp.confirmed ? 'rgba(34,197,94,0.05)' : 'rgba(248,113,113,0.05)', border: `1px solid ${pp.confirmed ? 'rgba(34,197,94,0.2)' : 'rgba(248,113,113,0.15)'}`, marginBottom: 14 }}>
+          <div style={{ padding: '14px 16px', borderRadius: 8, background: pp.confirmed ? 'rgba(29,185,84,0.05)' : 'rgba(248,113,113,0.04)', border: `1px solid ${pp.confirmed ? 'rgba(34,197,94,0.2)' : 'rgba(248,113,113,0.15)'}`, marginBottom: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
               <span style={{ fontSize: '1.2rem' }}>{pp.confirmed ? '✅' : '❌'}</span>
               <div>
@@ -740,7 +854,7 @@ function ResultCard({ r }: { r: ExtractionData }) {
               <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#4ade80', letterSpacing: '0.07em', marginBottom: 8 }}>PRAISES</div>
               {sk.praises.map((t, i) => (
                 <div key={i} style={{ marginBottom: 10 }}>
-                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#94a3b8', marginBottom: 3 }}>{t.theme} <span style={{ color: '#4ade80', fontWeight: 400 }}>({t.count}×)</span></div>
+                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#666666', marginBottom: 3 }}>{t.theme} <span style={{ color: '#4ade80', fontWeight: 400 }}>({t.count}×)</span></div>
                   {t.examples.map((ex, j) => <div key={j} style={{ fontSize: '0.75rem', color: '#444444', lineHeight: 1.5, marginBottom: 2, paddingLeft: 8, borderLeft: '2px solid rgba(34,197,94,0.25)' }}>"{ex}"</div>)}
                 </div>
               ))}
@@ -750,7 +864,7 @@ function ResultCard({ r }: { r: ExtractionData }) {
               <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#f87171', letterSpacing: '0.07em', marginBottom: 8 }}>COMPLAINTS</div>
               {sk.complaints.map((t, i) => (
                 <div key={i} style={{ marginBottom: 10 }}>
-                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#94a3b8', marginBottom: 3 }}>{t.theme} <span style={{ color: '#f87171', fontWeight: 400 }}>({t.count}×)</span></div>
+                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#666666', marginBottom: 3 }}>{t.theme} <span style={{ color: '#f87171', fontWeight: 400 }}>({t.count}×)</span></div>
                   {t.examples.map((ex, j) => <div key={j} style={{ fontSize: '0.75rem', color: '#444444', lineHeight: 1.5, marginBottom: 2, paddingLeft: 8, borderLeft: '2px solid rgba(248,113,113,0.25)' }}>"{ex}"</div>)}
                 </div>
               ))}
@@ -775,7 +889,7 @@ function ResultCard({ r }: { r: ExtractionData }) {
           </DataGrid>
           <div style={{ display: 'grid', gap: 6 }}>
             {r.reviews.map((rv, i) => (
-              <div key={i} style={{ background: '#161616', border: '1px solid rgba(148,163,184,0.08)', borderRadius: 8, padding: '9px 12px' }}>
+              <div key={i} style={{ background: '#f8f8f8', border: '1px solid rgba(0,0,0,0.06)', borderRadius: 8, padding: '9px 12px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, flexWrap: 'wrap', gap: 4 }}>
                   <span style={{ fontWeight: 600, fontSize: '0.8rem', color: '#888888' }}>{rv.author || 'Anonymous'}</span>
                   <div style={{ display: 'flex', gap: 8, fontSize: '0.77rem', color: '#444444' }}>
@@ -801,7 +915,7 @@ function ResultCard({ r }: { r: ExtractionData }) {
               const catColor: Record<string, string> = { tourism: '#4e9a66', amenity: '#a78bfa', historic: '#fbbf24', leisure: '#4ade80' };
               const c = catColor[poi.category] ?? '#888888';
               return (
-                <div key={poi.id} style={{ background: '#161616', border: '1px solid rgba(148,163,184,0.08)', borderRadius: 8, padding: '9px 12px' }}>
+                <div key={poi.id} style={{ background: '#f8f8f8', border: '1px solid rgba(0,0,0,0.06)', borderRadius: 8, padding: '9px 12px' }}>
                   <div style={{ fontWeight: 600, fontSize: '0.8rem', color: '#888888', marginBottom: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{poi.name}</div>
                   <div style={{ display: 'flex', gap: 5 }}>
                     <span style={{ fontSize: '0.7rem', padding: '1px 6px', borderRadius: 8, background: `${c}15`, color: c, border: `1px solid ${c}28` }}>{poi.category}</span>
@@ -824,7 +938,7 @@ function ResultCard({ r }: { r: ExtractionData }) {
               <a key={i} href={url} target="_blank" rel="noreferrer">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={url} alt={`Photo ${i + 1}`} loading="lazy"
-                  style={{ width: '100%', height: 90, objectFit: 'cover', borderRadius: 6, border: '1px solid rgba(148,163,184,0.08)', display: 'block' }}
+                  style={{ width: '100%', height: 90, objectFit: 'cover', borderRadius: 6, border: '1px solid rgba(0,0,0,0.06)', display: 'block' }}
                   onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
               </a>
             ))}
@@ -839,7 +953,7 @@ function ResultCard({ r }: { r: ExtractionData }) {
           <SectionLabel>Competitors — {r.competitors.length} within 1km</SectionLabel>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 8 }}>
             {r.competitors.map((c, ci) => (
-              <div key={ci} style={{ background: '#161616', border: '1px solid rgba(148,163,184,0.08)', borderRadius: 8, padding: '10px 12px' }}>
+              <div key={ci} style={{ background: '#f8f8f8', border: '1px solid rgba(0,0,0,0.06)', borderRadius: 8, padding: '10px 12px' }}>
                 <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#888888', marginBottom: 5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
                 <div style={{ display: 'flex', gap: 7, fontSize: '0.76rem', flexWrap: 'wrap', marginBottom: 4 }}>
                   {c.rating && <span style={{ color: '#fbbf24' }}>★ {c.rating}</span>}
@@ -946,9 +1060,11 @@ function ResultCard({ r }: { r: ExtractionData }) {
             <DataCell label="PPP Index" value={<span style={{ color: md.ppp_index >= 100 ? '#4ade80' : '#f87171', fontWeight: 700 }}>{md.ppp_index.toFixed(1)}</span>} />
           </DataGrid>
           <div style={{ marginBottom: 4 }}>
-            <div style={{ fontSize: '0.7rem', color: '#444444', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>Purchasing Power vs National Average (100)</div>
+            <div style={{ fontSize: '0.7rem', color: '#999999', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>Purchasing Power vs National Average (100)</div>
             <PPPBar macro={md} />
           </div>
+          {/* Unemployment history + demand trend chart */}
+          <UnemploymentTrendChart md={md} mt={mt} />
           <Divider />
         </>
       )}
@@ -962,6 +1078,15 @@ function ResultCard({ r }: { r: ExtractionData }) {
             <span style={{ color: '#4e9a66', fontWeight: 600 }}>Market Index</span> — synthetic demand index combining COVID recovery trajectory, seasonal patterns and sector cycles for Germany 2020–2024. &nbsp;
             <span style={{ color: '#fbbf24', fontWeight: 600 }}>Review Activity</span> — normalized quarterly review volume, anchored to real timestamps where available.
           </div>
+          <Divider />
+        </>
+      )}
+
+      {/* ═══ CLIMATE SENSITIVITY ═══ */}
+      {cd && (
+        <>
+          <SectionLabel>Climate Sensitivity Analysis — 24 Months</SectionLabel>
+          <ClimateSensitivityChart cd={cd} />
           <Divider />
         </>
       )}
@@ -984,7 +1109,7 @@ function ResultCard({ r }: { r: ExtractionData }) {
               { title: 'Business Model Mechanics', text: eco.model_mechanics },
               { title: 'Failure Rate & Risk', text: eco.failure_rate_note },
             ].map(({ title, text }) => (
-              <div key={title} style={{ padding: '12px 14px', borderRadius: 8, background: 'rgba(148,163,184,0.03)', border: '1px solid rgba(148,163,184,0.08)' }}>
+              <div key={title} style={{ padding: '12px 14px', borderRadius: 8, background: 'rgba(0,0,0,0.03)', border: '1px solid rgba(0,0,0,0.06)' }}>
                 <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#4e9a66', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 6 }}>{title}</div>
                 <p style={{ margin: 0, fontSize: '0.79rem', color: '#666666', lineHeight: 1.6 }}>{text}</p>
               </div>
@@ -1100,7 +1225,7 @@ export default function Home() {
 
         {!results.length && !loading && (
           <div className="panel">
-            <h3 style={{ color: '#4e9a66', marginBottom: 14, fontWeight: 700, fontSize: '0.95rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Intelligence modules</h3>
+            <h3 style={{ color: '#1db954', marginBottom: 14, fontWeight: 700, fontSize: '0.95rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Intelligence modules</h3>
             <ul className="info-list">
               <li><span>💰</span><strong>Probabilistic P&L</strong> — Bear / Base / Bull revenue, EBITDA, margin ranges with sanity-check ceiling and model compression alerts</li>
               <li><span>📐</span><strong>Cost Driver Matrix</strong> — sector-specific structural pressures, severity ratings, EBITDA drag in percentage points</li>
