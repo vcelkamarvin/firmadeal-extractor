@@ -4,10 +4,9 @@
   "description": "Institutional data extraction engine for Google Maps business intelligence",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build && npx playwright install --with-deps chromium",
     "start": "next start",
-    "export": "next build && next export",
-    "postinstall": "npx playwright install chromium"
+    "export": "next build && next export"
   },
   "dependencies": {
     "next": "^14.0.0",
