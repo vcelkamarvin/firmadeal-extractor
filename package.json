@@ -1,7 +1,7 @@
 {
   "name": "firmadeal-extractor",
   "version": "1.0.0",
-  "description": "Google Maps business data extractor via Places API",
+  "description": "Google Maps business intelligence extractor",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -10,7 +10,8 @@
   "dependencies": {
     "next": "^14.0.0",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "recharts": "^2.15.4"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
