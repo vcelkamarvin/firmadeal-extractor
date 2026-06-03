@@ -603,9 +603,21 @@ async function resolveUrl(url: string): Promise<string> {
 
 function parseMapUrl(url: string): { name: string | null; lat: number | null; lng: number | null } {
   const nameMatch = url.match(/\/maps\/place\/([^/@?]+)/);
-  const name = nameMatch ? decodeURIComponent(nameMatch[1].replace(/\+/g, ' ')).replace(/\s+/g, ' ').trim() : null;
-  const coordsMatch = url.match(/@(-?[0-9.]+),(-?[0-9.]+)/);
-  return { name, lat: coordsMatch ? parseFloat(coordsMatch[1]) : null, lng: coordsMatch ? parseFloat(coordsMatch[2]) : null };
+  let name: string | null = null;
+  if (nameMatch) {
+    try {
+      name = decodeURIComponent(nameMatch[1].replace(/\+/g, ' ')).replace(/\s+/g, ' ').trim() || null;
+    } catch {
+      // malformed percent-encoding — strip encoded segments
+      name = nameMatch[1].replace(/\+/g, ' ').replace(/%[0-9A-Fa-f]{2}/g, '').replace(/\s+/g, ' ').trim() || null;
+    }
+  }
+  // Prefer precise business coords from data param (!3d...!4d...)
+  const biz = url.match(/!3d(-?[0-9.]+)!4d(-?[0-9.]+)/);
+  if (biz) return { name, lat: parseFloat(biz[1]), lng: parseFloat(biz[2]) };
+  // Fall back to map-centre coords after @
+  const ctr = url.match(/@(-?[0-9.]+),(-?[0-9.]+)/);
+  return { name, lat: ctr ? parseFloat(ctr[1]) : null, lng: ctr ? parseFloat(ctr[2]) : null };
 }
 
 function parseAddressComponents(components: any[]): AddressDetail {
@@ -718,8 +730,8 @@ async function scrapeWebsite(url: string): Promise<WebsiteData | null> {
 // ── Places API ─────────────────────────────────────────────────────────────────
 
 async function placesTextSearch(query: string, lat: number | null, lng: number | null): Promise<any | null> {
-  const body: any = { textQuery: query, maxResultCount: 1, languageCode: 'de' };
-  if (lat !== null && lng !== null) body.locationBias = { circle: { center: { latitude: lat, longitude: lng }, radius: 500.0 } };
+  const body: any = { textQuery: query, maxResultCount: 1 };
+  if (lat !== null && lng !== null) body.locationBias = { circle: { center: { latitude: lat, longitude: lng }, radius: 2000.0 } };
 
   const r = await fetch(SEARCH_URL, {
     method: 'POST',
