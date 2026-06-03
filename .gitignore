@@ -39,3 +39,5 @@ yarn-error.log*
 # Playwright
 .playwright
 .vercel
+pipeline/scrapers/__pycache__/
+pipeline/output/

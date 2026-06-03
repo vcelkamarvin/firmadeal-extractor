@@ -1,9 +1,5 @@
 {
   "buildCommand": "npm run build",
-  "installCommand": "npm install && npx playwright install chromium",
-  "env": {
-    "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD": "0"
-  },
   "functions": {
     "app/api/extract/route.ts": {
       "maxDuration": 60

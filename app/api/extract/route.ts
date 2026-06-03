@@ -1,4 +1,5 @@
-import { chromium } from 'playwright';
+import { chromium as playwrightCore } from 'playwright-core';
+import chromium from '@sparticuz/chromium';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
@@ -56,45 +57,56 @@ async function tryAttr(page: any, selectors: string[], attr: string): Promise<st
   return null;
 }
 
-async function acceptGoogleConsent(page: any, originalUrl: string) {
-  if (!page.url().includes('consent.google.com')) return false;
+async function handleConsent(page: any, originalUrl: string) {
+  if (!page.url().includes('consent.google.com')) return;
 
-  const continueMatch = page.url().match(/[?&]continue=([^&]+)/);
-  const continueUrl = continueMatch ? decodeURIComponent(continueMatch[1]) : originalUrl;
-
-  const acceptButton = page.locator('button', {
-    hasText: /accept all|agree|i agree/i,
+  // Accept button text in EN + DE + other common EU languages
+  const acceptBtn = page.locator('button', {
+    hasText: /alle akzeptieren|accept all|ich stimme zu|agree|zustimmen|accepter tout|accetta tutto/i,
   });
 
-  if (await acceptButton.count()) {
-    await acceptButton.first().click();
+  if (await acceptBtn.count() > 0) {
+    await acceptBtn.first().click();
     try {
       await page.waitForURL((url: string) => !url.includes('consent.google.com'), { timeout: 15000 });
     } catch {
-      await page.goto(continueUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      const m = page.url().match(/[?&]continue=([^&]+)/);
+      const target = m ? decodeURIComponent(m[1]) : originalUrl;
+      await page.goto(target, { waitUntil: 'domcontentloaded', timeout: 30000 });
     }
     await page.waitForLoadState('domcontentloaded');
-    return true;
   }
-  return false;
 }
 
 async function extractInstitutionalData(url: string): Promise<ExtractionPayload> {
-  const browser = await chromium.launch({
+  const executablePath = await chromium.executablePath();
+
+  const browser = await playwrightCore.launch({
+    args: chromium.args,
+    executablePath,
     headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
   });
 
   const context = await browser.newContext({
-    locale: 'en-US',
+    locale: 'de-DE',
     userAgent:
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
   });
 
+  // Pre-set consent cookie so the popup is skipped
   await context.addCookies([
     {
       name: 'CONSENT',
-      value: 'YES+1',
+      value: 'YES+cb.20231130-17-p1.de+F+885',
+      domain: '.google.com',
+      path: '/',
+      httpOnly: false,
+      secure: true,
+      sameSite: 'None',
+    },
+    {
+      name: 'SOCS',
+      value: 'CAISHAgBEhJnd3NfMjAyMzA4MjgtMF9SQzEaAmRlIAEaBgiA_LCnBg',
       domain: '.google.com',
       path: '/',
       httpOnly: false,
@@ -104,20 +116,22 @@ async function extractInstitutionalData(url: string): Promise<ExtractionPayload>
   ]);
 
   const page = await context.newPage();
-  await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
+  await page.setExtraHTTPHeaders({ 'Accept-Language': 'de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7' });
 
   try {
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
+    // Dismiss consent page if it still appears
     for (let i = 0; i < 3 && page.url().includes('consent.google.com'); i++) {
-      await acceptGoogleConsent(page, url);
+      await handleConsent(page, url);
+      await page.waitForTimeout(1000);
     }
 
-    // Wait for the business listing panel to load
+    // Wait for the business panel to render
     try {
       await page.waitForSelector('h1', { timeout: 15000 });
     } catch {}
-    await page.waitForTimeout(2500);
+    await page.waitForTimeout(2000);
 
     const payload: ExtractionPayload = {
       name: null,
@@ -138,70 +152,68 @@ async function extractInstitutionalData(url: string): Promise<ExtractionPayload>
       spot_category: null,
     };
 
-    // Name
+    // ── Name ──────────────────────────────────────────────────────────────────
     payload.name = (await page.textContent('h1'))?.trim() || null;
 
-    // Category — Google Maps button with jsaction targeting the category pane
+    // ── Category ──────────────────────────────────────────────────────────────
     payload.category = await tryText(page, [
       'button[jsaction*="pane.rating.category"]',
       '[data-section-id="typicalVisitor"] button',
     ]);
 
-    // Rating — the star widget has aria-label="X.X stars"
-    const ratingRaw = await tryAttr(
-      page,
-      ['[aria-label*="stars"]', '[aria-label*=" star"]'],
-      'aria-label'
-    );
+    // ── Rating ────────────────────────────────────────────────────────────────
+    // aria-label is "4,5 Sterne" in German or "4.5 stars" in English
+    const ratingRaw = await tryAttr(page, ['[aria-label*="Sterne"]', '[aria-label*="stars"]', '[aria-label*="star"]'], 'aria-label');
     if (ratingRaw) {
-      const m = ratingRaw.match(/([\d.,]+)/);
+      const m = ratingRaw.match(/([\d][,.][\d])/);
       payload.rating = m ? m[1].replace(',', '.') : null;
     }
 
-    // Review volume — button aria-label contains "reviews"
-    const reviewRaw = await tryAttr(page, ['button[aria-label*="reviews"]'], 'aria-label');
+    // ── Review count ──────────────────────────────────────────────────────────
+    // aria-label: "1.234 Rezensionen" (DE) or "1,234 reviews" (EN)
+    const reviewRaw = await tryAttr(page, [
+      'button[aria-label*="Rezensionen"]',
+      'button[aria-label*="Bewertungen"]',
+      'button[aria-label*="reviews"]',
+    ], 'aria-label');
     if (reviewRaw) {
-      const m = reviewRaw.match(/([\d,]+)/);
-      payload.review_volume = m ? m[1].replace(',', '') : reviewRaw;
-    } else {
-      // fallback: inner text of the reviews button
-      const reviewText = await tryText(page, ['button[aria-label*="reviews"]']);
-      payload.review_volume = reviewText;
+      const m = reviewRaw.match(/([\d.,]+)/);
+      payload.review_volume = m ? m[1].replace(/[.,]/g, '') : reviewRaw;
     }
 
-    // Address — Google Maps uses data-item-id="address"
+    // ── Address ───────────────────────────────────────────────────────────────
     payload.address = await tryText(page, [
       'button[data-item-id="address"]',
+      '[data-tooltip="Adresse kopieren"]',
       '[data-tooltip="Copy address"]',
-      'button[aria-label*="ddress"]',
+      'button[aria-label*="Adresse"]',
+      'button[aria-label*="Address"]',
     ]);
 
-    // Phone — data-item-id starts with "phone:tel:"
+    // ── Phone ────────────────────────────────────────────────────────────────
     payload.phone = await tryText(page, [
       '[data-item-id^="phone:tel:"]',
       'button[data-item-id^="phone"]',
-      'button[aria-label*="hone"]',
+      'button[aria-label*="Telefon"]',
+      'button[aria-label*="Phone"]',
     ]);
 
-    // Coordinates from the URL (@lat,lng pattern)
+    // ── Coordinates from URL ──────────────────────────────────────────────────
     const coords = page.url().match(/@([0-9.-]+),([0-9.-]+)/);
     if (coords) {
       payload.latitude = parseFloat(coords[1]);
       payload.longitude = parseFloat(coords[2]);
     }
 
-    // Derive city / region / country from address string
+    // ── City / Region / Country from address ──────────────────────────────────
     if (payload.address) {
-      const parts = payload.address
-        .split(',')
-        .map((p) => p.trim())
-        .filter(Boolean);
+      const parts = payload.address.split(',').map((p) => p.trim()).filter(Boolean);
       if (parts.length > 0) payload.country = parts[parts.length - 1];
-      if (parts.length > 1) payload.city = parts[parts.length - 2];
-      if (parts.length > 2) payload.region = parts[parts.length - 3];
+      if (parts.length > 1) payload.city = parts[parts.length - 2]?.replace(/^\d{5}\s*/, '') || null;
+      if (parts.length > 2) payload.region = parts[parts.length - 3] || null;
     }
 
-    // Search interest label
+    // ── Search interest label ─────────────────────────────────────────────────
     if (payload.category) {
       payload.search_interest = payload.city
         ? `${payload.category} in ${payload.city}`
@@ -209,25 +221,23 @@ async function extractInstitutionalData(url: string): Promise<ExtractionPayload>
       payload.spot_category = payload.category;
     }
 
-    // Nearby competitors — collect /maps/place/ links from the page
+    // ── Nearby competitors ────────────────────────────────────────────────────
     try {
       const rawCompetitors = await page.evaluate(() => {
         const anchors = Array.from(
           document.querySelectorAll<HTMLAnchorElement>('a[href*="/maps/place/"]')
         );
         const seen = new Set<string>();
-        const results: Array<{ name: string; url: string }> = [];
-
+        const out: { name: string; url: string }[] = [];
         anchors.forEach((a) => {
           const name = a.textContent?.trim() || '';
           const href = a.href || '';
           if (!name || name.length < 3 || !href || seen.has(href)) return;
-          if (/directions|website|photos/i.test(name)) return;
+          if (/Route|Directions|Website|Fotos|Photos/i.test(name)) return;
           seen.add(href);
-          results.push({ name, url: href });
+          out.push({ name, url: href });
         });
-
-        return results.slice(0, 8);
+        return out.slice(0, 8);
       });
 
       payload.competitors = rawCompetitors.map((c) => ({
@@ -251,11 +261,9 @@ async function extractInstitutionalData(url: string): Promise<ExtractionPayload>
 export async function POST(request: NextRequest) {
   try {
     const { url } = await request.json();
-
     if (!url) {
       return NextResponse.json({ error: 'URL is required' }, { status: 400 });
     }
-
     const data = await extractInstitutionalData(url);
     return NextResponse.json(data, { status: 200 });
   } catch (error) {
