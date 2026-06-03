@@ -2,6 +2,8 @@ import { chromium } from 'playwright';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
+export const maxDuration = 60;
+
 interface CompetitorData {
   name: string;
   rating: string | null;
@@ -30,47 +32,51 @@ interface ExtractionPayload {
   spot_category: string | null;
 }
 
-async function acceptGoogleConsent(page: any, originalUrl: string) {
-  if (!page.url().includes('consent.google.com')) {
-    return false;
+async function tryText(page: any, selectors: string[]): Promise<string | null> {
+  for (const sel of selectors) {
+    try {
+      const el = await page.$(sel);
+      if (!el) continue;
+      const text = (await el.innerText())?.trim();
+      if (text) return text;
+    } catch {}
   }
+  return null;
+}
 
-  const currentConsentUrl = page.url();
-  const currentContinueMatch = currentConsentUrl.match(/[?&]continue=([^&]+)/);
-  const currentContinueUrl = currentContinueMatch ? decodeURIComponent(currentContinueMatch[1]) : originalUrl;
+async function tryAttr(page: any, selectors: string[], attr: string): Promise<string | null> {
+  for (const sel of selectors) {
+    try {
+      const el = await page.$(sel);
+      if (!el) continue;
+      const val = (await el.getAttribute(attr))?.trim();
+      if (val) return val;
+    } catch {}
+  }
+  return null;
+}
+
+async function acceptGoogleConsent(page: any, originalUrl: string) {
+  if (!page.url().includes('consent.google.com')) return false;
+
+  const continueMatch = page.url().match(/[?&]continue=([^&]+)/);
+  const continueUrl = continueMatch ? decodeURIComponent(continueMatch[1]) : originalUrl;
 
   const acceptButton = page.locator('button', {
-    hasText: /accept all|agree|přijmout vše|akzeptieren|zaprijmout|souhlasím|souhlas/i,
+    hasText: /accept all|agree|i agree/i,
   });
 
   if (await acceptButton.count()) {
     await acceptButton.first().click();
     try {
-      await page.waitForURL((url: string) => !url.includes('consent.google.com'), {
-        timeout: 30000,
-      });
-    } catch (error) {
-      if (currentContinueUrl) {
-        await page.goto(currentContinueUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-      }
+      await page.waitForURL((url: string) => !url.includes('consent.google.com'), { timeout: 15000 });
+    } catch {
+      await page.goto(continueUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
     }
     await page.waitForLoadState('domcontentloaded');
     return true;
   }
-
   return false;
-}
-
-async function textFromSelectors(page: any, selectors: string[]) {
-  for (const selector of selectors) {
-    const element = await page.$(selector);
-    if (!element) continue;
-    const text = await element.innerText();
-    if (text?.trim()) {
-      return text.trim();
-    }
-  }
-  return null;
 }
 
 async function extractInstitutionalData(url: string): Promise<ExtractionPayload> {
@@ -78,10 +84,11 @@ async function extractInstitutionalData(url: string): Promise<ExtractionPayload>
     headless: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
   });
+
   const context = await browser.newContext({
     locale: 'en-US',
     userAgent:
-      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
   });
 
   await context.addCookies([
@@ -97,28 +104,20 @@ async function extractInstitutionalData(url: string): Promise<ExtractionPayload>
   ]);
 
   const page = await context.newPage();
-  await page.setExtraHTTPHeaders({
-    'Accept-Language': 'en-US,en;q=0.9',
-  });
+  await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
 
   try {
-    const originalUrl = url;
-    await page.goto(originalUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
-    for (let attempt = 0; attempt < 3 && page.url().includes('consent.google.com'); attempt += 1) {
-      await acceptGoogleConsent(page, originalUrl);
+    for (let i = 0; i < 3 && page.url().includes('consent.google.com'); i++) {
+      await acceptGoogleConsent(page, url);
     }
 
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(4000);
-
-    const pageHeading = (await page.textContent('h1'))?.trim() || '';
-    if (!pageHeading || page.url().includes('/maps/place//@')) {
-      await page.goto(originalUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
-      await page.waitForTimeout(4000);
-    }
-
-    await page.waitForLoadState('domcontentloaded');
+    // Wait for the business listing panel to load
+    try {
+      await page.waitForSelector('h1', { timeout: 15000 });
+    } catch {}
+    await page.waitForTimeout(2500);
 
     const payload: ExtractionPayload = {
       name: null,
@@ -138,171 +137,111 @@ async function extractInstitutionalData(url: string): Promise<ExtractionPayload>
       search_interest: null,
       spot_category: null,
     };
-    
-    // Extract business name
-    try {
-      const titleElement = await page.waitForSelector('h1', { timeout: 10000 });
-      payload.name = (await titleElement.innerText())?.trim() || null;
-    } catch (e) {
-      console.log('Name extraction failed:', e);
+
+    // Name
+    payload.name = (await page.textContent('h1'))?.trim() || null;
+
+    // Category — Google Maps button with jsaction targeting the category pane
+    payload.category = await tryText(page, [
+      'button[jsaction*="pane.rating.category"]',
+      '[data-section-id="typicalVisitor"] button',
+    ]);
+
+    // Rating — the star widget has aria-label="X.X stars"
+    const ratingRaw = await tryAttr(
+      page,
+      ['[aria-label*="stars"]', '[aria-label*=" star"]'],
+      'aria-label'
+    );
+    if (ratingRaw) {
+      const m = ratingRaw.match(/([\d.,]+)/);
+      payload.rating = m ? m[1].replace(',', '.') : null;
     }
 
-    // Extract additional fields via detailed page inspection
-    try {
-      const detailedData = await page.evaluate(() => {
-        const result: any = {
-          category: null,
-          address: null,
-          phone: null,
-          website: null,
-          rating: null,
-          reviews: null,
-        };
-
-        // Get all visible text split by lines for targeted extraction
-        const bodyText = document.body.innerText;
-        const lines = bodyText.split('\n').map((l) => l.trim()).filter(Boolean);
-
-        // Find category - look for text after rating/review count pattern
-        const navMenuItems = ['Restaurace', 'Hotely', 'Tipy', 'MHD', 'Parkování', 'Lékárny', 'Bankomaty', 'Uloženo', 'Poslední'];
-        for (let i = 0; i < lines.length; i++) {
-          const line = lines[i];
-          // Look for rating pattern (e.g., "4,2" or "4.2")
-          if (line.match(/^\d+[,\.]\d+$/)) {
-            // Found rating - category should be within next 5 lines
-            for (let j = i + 1; j < Math.min(i + 5, lines.length); j++) {
-              const nextLine = lines[j];
-              if (
-                !navMenuItems.includes(nextLine) &&
-                !nextLine.match(/^(Stáhnout|Prohlédnout|Přehled|Recenze|Fotky|Trasa|Uložit|V okolí|Poslat|Sdílet|Přihlášení)/) &&
-                !nextLine.match(/^\(\d+\)$/) &&
-                nextLine.length > 4 &&
-                nextLine.length < 60
-              ) {
-                result.category = nextLine;
-                break;
-              }
-            }
-            // Also extract rating and reviews here
-            result.rating = line;
-            // Look for review count (pattern like "(5)")
-            for (const reviewLine of lines) {
-              if (reviewLine.match(/^\(\d+\)$/)) {
-                result.reviews = reviewLine.replace(/[()]/g, '');
-                break;
-              }
-            }
-            break;
-          }
-        }
-
-
-        // Find address (contains street and postal code)
-        for (const line of lines) {
-          if (line.match(/^[^,]+\d+\/\d+.*\d{3}\s*\d{2}/)) {
-            result.address = line;
-            break;
-          }
-        }
-
-        // Find phone (10-15 digit number, often with spaces or dashes)
-        for (const line of lines) {
-          if (line.match(/^[\d\s\-\+]{10,20}$/) && line.match(/\d{3}/)) {
-            result.phone = line.trim();
-            break;
-          }
-        }
-
-        // Find website (domain pattern)
-        for (const line of lines) {
-          if (line.match(/^[a-zA-Z0-9][a-zA-Z0-9\-]*\.[a-zA-Z]{2,}$/) && !line.includes(' ') && !line.match(/^(google|maps|support)/)) {
-            result.website = line;
-            break;
-          }
-        }
-
-        return result;
-      });
-
-      payload.category = detailedData.category || null;
-      payload.address = detailedData.address || null;
-      payload.phone = detailedData.phone || null;
-      payload.rating = detailedData.rating || null;
-      payload.review_volume = detailedData.reviews || null;
-    } catch (e) {
-      console.log('Detailed extraction failed:', e);
+    // Review volume — button aria-label contains "reviews"
+    const reviewRaw = await tryAttr(page, ['button[aria-label*="reviews"]'], 'aria-label');
+    if (reviewRaw) {
+      const m = reviewRaw.match(/([\d,]+)/);
+      payload.review_volume = m ? m[1].replace(',', '') : reviewRaw;
+    } else {
+      // fallback: inner text of the reviews button
+      const reviewText = await tryText(page, ['button[aria-label*="reviews"]']);
+      payload.review_volume = reviewText;
     }
 
-    // Parse coordinates from URL
+    // Address — Google Maps uses data-item-id="address"
+    payload.address = await tryText(page, [
+      'button[data-item-id="address"]',
+      '[data-tooltip="Copy address"]',
+      'button[aria-label*="ddress"]',
+    ]);
+
+    // Phone — data-item-id starts with "phone:tel:"
+    payload.phone = await tryText(page, [
+      '[data-item-id^="phone:tel:"]',
+      'button[data-item-id^="phone"]',
+      'button[aria-label*="hone"]',
+    ]);
+
+    // Coordinates from the URL (@lat,lng pattern)
     const coords = page.url().match(/@([0-9.-]+),([0-9.-]+)/);
     if (coords) {
       payload.latitude = parseFloat(coords[1]);
       payload.longitude = parseFloat(coords[2]);
     }
 
-    // Normalize city / region / country from address string
+    // Derive city / region / country from address string
     if (payload.address) {
-      const parts = payload.address.split(',').map((p) => p.trim()).filter(Boolean);
-      if (parts.length > 0) {
-        payload.country = parts[parts.length - 1] || null;
-      }
-      if (parts.length > 1) {
-        payload.city = parts[parts.length - 2] || null;
-      }
-      if (parts.length > 2) {
-        payload.region = parts[parts.length - 3] || null;
-      }
+      const parts = payload.address
+        .split(',')
+        .map((p) => p.trim())
+        .filter(Boolean);
+      if (parts.length > 0) payload.country = parts[parts.length - 1];
+      if (parts.length > 1) payload.city = parts[parts.length - 2];
+      if (parts.length > 2) payload.region = parts[parts.length - 3];
     }
 
-    // Create a service interest query for supplemental analysis
-    if (payload.category && payload.city) {
-      payload.search_interest = `${payload.category} in ${payload.city}`;
-      payload.spot_category = payload.category;
-    } else if (payload.category) {
-      payload.search_interest = payload.category;
+    // Search interest label
+    if (payload.category) {
+      payload.search_interest = payload.city
+        ? `${payload.category} in ${payload.city}`
+        : payload.category;
       payload.spot_category = payload.category;
     }
 
-    // Extract competitor references from related place cards and the side panel
+    // Nearby competitors — collect /maps/place/ links from the page
     try {
       const rawCompetitors = await page.evaluate(() => {
-        const anchors = Array.from(document.querySelectorAll('a[href*="/place/"], a[href*="/maps/place/"]'));
-        const payload: Array<{ name: string; url: string; category: string | null; rating: string | null; review_volume: string | null; distance: string | null; }> = [];
+        const anchors = Array.from(
+          document.querySelectorAll<HTMLAnchorElement>('a[href*="/maps/place/"]')
+        );
         const seen = new Set<string>();
+        const results: Array<{ name: string; url: string }> = [];
 
-        anchors.forEach((anchor) => {
-          const name = anchor.textContent?.trim() || '';
-          const url = anchor instanceof HTMLAnchorElement ? anchor.href : anchor.getAttribute('href') || '';
-          if (!name || name.length < 3 || !url) return;
-          if (seen.has(url)) return;
-          if (name.toLowerCase().includes('directions') || name.toLowerCase().includes('website') || name.toLowerCase().includes('photos')) return;
-          seen.add(url);
-          payload.push({
-            name,
-            url,
-            category: null,
-            rating: null,
-            review_volume: null,
-            distance: null,
-          });
+        anchors.forEach((a) => {
+          const name = a.textContent?.trim() || '';
+          const href = a.href || '';
+          if (!name || name.length < 3 || !href || seen.has(href)) return;
+          if (/directions|website|photos/i.test(name)) return;
+          seen.add(href);
+          results.push({ name, url: href });
         });
 
-        return payload.slice(0, 6);
+        return results.slice(0, 8);
       });
 
-      payload.competitors = rawCompetitors.map((competitor) => ({
-        ...competitor,
+      payload.competitors = rawCompetitors.map((c) => ({
+        ...c,
         category: null,
         rating: null,
         review_volume: null,
         distance: null,
       }));
       payload.competitor_count = payload.competitors.length;
-    } catch (e) {
-      console.log('Competitor extraction failed:', e);
+    } catch {
       payload.competitor_count = 0;
     }
-    
+
     return payload;
   } finally {
     await browser.close();
@@ -312,22 +251,15 @@ async function extractInstitutionalData(url: string): Promise<ExtractionPayload>
 export async function POST(request: NextRequest) {
   try {
     const { url } = await request.json();
-    
+
     if (!url) {
-      return NextResponse.json(
-        { error: 'URL is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'URL is required' }, { status: 400 });
     }
-    
+
     const data = await extractInstitutionalData(url);
-    
     return NextResponse.json(data, { status: 200 });
   } catch (error) {
     console.error('Extraction error:', error);
-    return NextResponse.json(
-      { error: 'Extraction failed', details: String(error) },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Extraction failed', details: String(error) }, { status: 500 });
   }
 }
