@@ -1,16 +1,14 @@
 {
   "name": "firmadeal-extractor",
   "version": "1.0.0",
-  "description": "Institutional data extraction engine for Google Maps business intelligence",
+  "description": "Google Maps business data extractor via Places API",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start"
   },
   "dependencies": {
-    "@sparticuz/chromium": "^117.0.0",
     "next": "^14.0.0",
-    "playwright-core": "^1.60.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
