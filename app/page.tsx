@@ -4,13 +4,13 @@ import { useState } from 'react';
 import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   ResponsiveContainer, RadialBarChart, RadialBar, Tooltip, Legend,
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Cell,
-  LineChart, Line, ReferenceLine,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Cell, ReferenceLine,
+  LineChart, Line, ComposedChart, Area,
 } from 'recharts';
 
-// ── Interfaces ────────────────────────────────────────────────────────────────
+// ── Type definitions ───────────────────────────────────────────────────────────
 
-interface ReviewData { author: string | null; rating: number | null; text: string | null; language: string | null; relative_time: string | null; }
+interface ReviewData { author: string | null; photo_url: string | null; rating: number | null; text: string | null; language: string | null; date: string | null; relative_time: string | null; }
 interface ReviewAnalysis { total: number; positive: number; negative: number; neutral: number; sentiment_score: number | null; avg_review_length: number; oldest_date: string | null; newest_date: string | null; languages: string[]; tourist_ratio_pct: number | null; }
 interface HoursData { weekday_text: string[]; open_now: boolean | null; total_weekly_hours: number | null; open_on_weekends: boolean; avg_daily_hours: number | null; }
 interface AddressDetail { street_number: string | null; street: string | null; sublocality: string | null; city: string | null; bundesland: string | null; landkreis: string | null; postal_code: string | null; country: string | null; country_code: string | null; }
@@ -22,81 +22,57 @@ interface AreaMetrics { quality_index: number; businesses_count: number; avg_rat
 interface PricingPower { price_premium_index: number | null; rating_premium: number | null; local_demand_share_pct: number | null; neg_price_sentiment_ratio: number | null; confirmed: boolean; factors_met: string[]; factors_missing: string[]; }
 interface RadarPoint { metric: string; target: number; market: number; fullMark: number; }
 interface IndustryYearData { year: number; context: string; }
-interface IndustryEconomics { industry_label: string; ebitda_multiple: { low: number; mid: number; high: number }; avg_margin_pct: number | null; market_size_de_bn: number | null; cagr_5y_pct: number | null; trend_summary: string; yearly: IndustryYearData[]; }
+interface IndustryEconomics { industry_label: string; ebitda_multiple: { low: number; mid: number; high: number }; avg_margin_pct: number | null; market_size_de_bn: number | null; cagr_5y_pct: number | null; trend_summary: string; structural_margins: string; failure_rate_note: string; model_mechanics: string; yearly: IndustryYearData[]; }
 interface CompetitorData { name: string | null; url: string | null; address: string | null; rating: string | null; review_volume: string | null; category: string | null; price_level: string | null; phone: string | null; business_status: string | null; }
-
-interface MacroData {
-  unemployment_pct: number;
-  national_avg_unemployment: number;
-  ppp_index: number;
-  median_gross_wage: number;
-  commercial_rent_per_sqm: number;
-  bundesland: string | null;
-  city: string | null;
-  data_source: string;
-}
-
-interface LaborFriction {
-  index: number;
-  unemployment_pct: number;
-  national_avg_unemployment: number;
-  wage_pressure_flag: boolean;
-  interpretation: string;
-}
-
-interface SyntheticPL {
-  estimated_age_years: number;
-  review_capture_rate_pct: number;
-  estimated_revenue: number;
-  annual_transactions: number;
-  adjusted_basket_eur: number;
-  cogs: number;
-  gross_profit: number;
-  gross_margin_pct: number;
-  fte_estimate: number;
-  personnel_cost: number;
-  facility_sqm: number;
-  facility_cost: number;
-  other_opex: number;
-  total_opex: number;
-  ebitda: number;
-  ebitda_margin_pct: number | null;
-  net_margin_pct: number | null;
-  industry_avg_ebitda_margin: number | null;
-  revenue_per_employee: number | null;
-  rent_as_revenue_pct: number | null;
-  personnel_as_revenue_pct: number | null;
-  high_fixed_cost_risk: boolean;
-  fixed_cost_ratio: number;
-  breakeven_revenue: number;
-  risk_summary: string;
-}
-
 interface TimelinePoint { period: string; reviews: number; trends_index: number; }
+interface MacroData { unemployment_pct: number; national_avg_unemployment: number; ppp_index: number; median_gross_wage: number; commercial_rent_per_sqm: number; bundesland: string | null; city: string | null; data_source: string; }
+interface LaborFriction { index: number; unemployment_pct: number; national_avg_unemployment: number; wage_pressure_flag: boolean; interpretation: string; }
+interface FinancialRange { low: number; mid: number; high: number; }
+interface CostDriver { name: string; severity: 'low' | 'medium' | 'high' | 'critical'; trend: 'improving' | 'stable' | 'worsening'; description: string; ebitda_impact_pct: number; }
+interface DependencyMatrix { business_model_summary: string; primary_leverage: string; drivers: CostDriver[]; net_ebitda_drag_pct: number; }
+interface SanityCheck { rev_per_employee_synthetic: number; rev_per_employee_benchmark: number; ratio: number; overheated: boolean; compression_note: string | null; }
+interface SyntheticPL {
+  estimated_age_years: number; capture_rate_expected: number; capture_rate_pessimistic: number; capture_rate_optimistic: number;
+  revenue: FinancialRange; annual_transactions: FinancialRange; adjusted_basket_eur: number;
+  cogs: FinancialRange; gross_profit: FinancialRange; gross_margin_pct: number;
+  fte_estimate: number; personnel_cost: number; facility_sqm: number; facility_cost: number;
+  other_opex: FinancialRange; total_fixed_costs: number;
+  ebitda: FinancialRange; ebitda_margin_pct: FinancialRange | null;
+  industry_avg_ebitda_margin: number | null; fixed_cost_ratio: number; breakeven_revenue: number;
+  revenue_per_employee: number; rent_as_revenue_pct: number | null; personnel_as_revenue_pct: number | null;
+  high_fixed_cost_risk: boolean; sanity_check: SanityCheck; dependency_matrix: DependencyMatrix; risk_summary: string;
+}
+interface SpatialContext {
+  nearest_transport: { name: string; type: string; distance_m: number; walking_min: number; } | null;
+  city_center_distance_m: number | null;
+  zone_classification: string;
+  foot_traffic_score: number;
+  location_economics: string;
+}
 
 interface ExtractionData {
   place_id: string | null; name: string | null; types: string[]; category: string | null; business_status: string | null; summary: string | null;
-  address: string | null; vicinity: string | null; phone: string | null; phone_intl: string | null; website: string | null; google_maps_url: string | null; resolved_url: string | null;
+  address: string | null; vicinity: string | null; phone: string | null; phone_intl: string | null; website: string | null; google_maps_url: string | null;
   latitude: number | null; longitude: number | null; plus_code: string | null; address_detail: AddressDetail;
   city: string | null; region: string | null; country: string | null;
   rating: string | null; review_volume: string | null; price_level: string | null;
   reviews: ReviewData[]; review_analysis: ReviewAnalysis | null; sentiment_keywords: SentimentKeywords | null;
   opening_hours: HoursData | null; is_open: boolean | null;
   delivery: boolean | null; dine_in: boolean | null; takeout: boolean | null; reservable: boolean | null;
-  serves_beer: boolean | null; serves_breakfast: boolean | null; serves_brunch: boolean | null; serves_dinner: boolean | null; serves_lunch: boolean | null; serves_wine: boolean | null;
+  serves_beer: boolean | null; serves_breakfast: boolean | null; serves_brunch: boolean | null;
+  serves_dinner: boolean | null; serves_lunch: boolean | null; serves_wine: boolean | null;
   wheelchair_accessible: boolean | null; curbside_pickup: boolean | null;
   photos: string[]; photos_count: number; website_data: WebsiteData | null;
   competitor_count: number | null; competitors: CompetitorData[];
   area_metrics: AreaMetrics | null; radar_data: RadarPoint[]; pricing_power: PricingPower | null;
   points_of_interest: PointOfInterest[]; industry_economics: IndustryEconomics | null;
+  macro_data: MacroData | null; labor_friction: LaborFriction | null;
+  synthetic_pl: SyntheticPL | null; market_timeline: TimelinePoint[];
+  spatial_context: SpatialContext | null;
   search_interest: string | null; spot_category: string | null;
-  macro_data: MacroData | null;
-  labor_friction: LaborFriction | null;
-  synthetic_pl: SyntheticPL | null;
-  market_timeline: TimelinePoint[];
 }
 
-// ── Utils ─────────────────────────────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────────────────────
 
 function parseUrls(raw: string) {
   return raw.split(/[\n,\s]+/).map(u => u.trim()).filter(u => u.startsWith('http') || u.startsWith('maps.'));
@@ -104,7 +80,7 @@ function parseUrls(raw: string) {
 
 function fmtEur(n: number): string {
   if (n >= 1_000_000) return `€${(n / 1_000_000).toFixed(2)}M`;
-  if (n >= 1_000) return `€${(n / 1_000).toFixed(0)}k`;
+  if (n >= 1_000) return `€${Math.round(n / 1_000)}k`;
   return `€${n}`;
 }
 
@@ -112,266 +88,440 @@ function CopyBtn({ value, display }: { value: string; display?: React.ReactNode 
   const [copied, setCopied] = useState(false);
   return (
     <button onClick={() => { navigator.clipboard.writeText(value).catch(() => {}); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
-      style={{ background: copied ? 'rgba(56,189,248,0.1)' : 'none', padding: '0 4px', borderRadius: 4, color: copied ? '#38bdf8' : '#cbd5e1', fontSize: '0.86rem', textAlign: 'left', border: 'none', cursor: 'pointer' }}>
-      {copied ? '✓' : (display ?? (value || '—'))}
+      className="copy-btn" style={{ color: copied ? '#4e9a66' : '#94a3b8' }}>
+      {copied ? '✓ copied' : (display ?? (value || '—'))}
     </button>
   );
 }
 
-function Badge({ label, value }: { label: string; value: boolean | null }) {
-  if (value === null) return null;
-  return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '3px 9px', borderRadius: 20, fontSize: '0.76rem', fontWeight: 600, background: value ? 'rgba(34,197,94,0.1)' : 'rgba(248,113,113,0.08)', color: value ? '#4ade80' : '#f87171', border: `1px solid ${value ? 'rgba(34,197,94,0.2)' : 'rgba(248,113,113,0.15)'}` }}>
-      {value ? '✓' : '✗'} {label}
-    </span>
-  );
+// ── Design system primitives ───────────────────────────────────────────────────
+
+function Divider() {
+  return <div style={{ height: 1, background: 'rgba(148,163,184,0.08)', margin: '28px 0' }} />;
 }
 
-function Sec({ title, children }: { title: string; children: React.ReactNode }) {
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return <div className="section-label">{children}</div>;
+}
+
+function DataGrid({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+  return <div className="data-grid" style={style}>{children}</div>;
+}
+
+function DataCell({ label, value, accent }: { label: string; value: React.ReactNode; accent?: 'green' | 'red' | 'yellow' | 'blue' }) {
+  const colors = { green: '#4ade80', red: '#f87171', yellow: '#fbbf24', blue: '#4e9a66' };
   return (
-    <div style={{ marginBottom: 24 }}>
-      <div style={{ fontSize: '0.76rem', fontWeight: 700, color: '#38bdf8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>{title}</div>
-      {children}
+    <div className="data-cell">
+      <div className="data-cell-label">{label}</div>
+      <div className="data-cell-value" style={accent ? { color: colors[accent] } : undefined}>{value}</div>
     </div>
   );
 }
 
-function Kv({ k, v }: { k: string; v: React.ReactNode }) {
-  return (
-    <div className="result-item">
-      <strong>{k}</strong>
-      <span style={{ color: '#cbd5e1', fontSize: '0.86rem' }}>{v}</span>
-    </div>
-  );
+function ProseBlock({ text }: { text: string }) {
+  return <p style={{ margin: '10px 0 0', fontSize: '0.82rem', color: '#888888', lineHeight: 1.65 }}>{text}</p>;
 }
 
-// ── Tab Bar ───────────────────────────────────────────────────────────────────
+// ── Recharts components ────────────────────────────────────────────────────────
 
-function TabBar({ tabs, active, onChange }: { tabs: string[]; active: string; onChange: (t: string) => void }) {
-  return (
-    <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '1px solid rgba(148,163,184,0.1)', paddingBottom: 0 }}>
-      {tabs.map(t => (
-        <button key={t} onClick={() => onChange(t)}
-          style={{ padding: '8px 16px', fontSize: '0.82rem', fontWeight: active === t ? 700 : 400, color: active === t ? '#38bdf8' : '#475569', background: 'none', border: 'none', cursor: 'pointer', borderBottom: active === t ? '2px solid #38bdf8' : '2px solid transparent', transition: 'all 0.15s' }}>
-          {t}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-// ── Recharts: Area Quality Gauge ──────────────────────────────────────────────
-
-function QualityGauge({ index }: { index: number }) {
+function AQIGauge({ index }: { index: number }) {
   const color = index >= 70 ? '#4ade80' : index >= 45 ? '#fbbf24' : '#f87171';
-  const data = [{ name: 'AQI', value: index, fill: color }];
   return (
     <div style={{ textAlign: 'center' }}>
-      <ResponsiveContainer width="100%" height={160}>
-        <RadialBarChart cx="50%" cy="80%" innerRadius="60%" outerRadius="100%"
-          startAngle={180} endAngle={0} data={data} barSize={22}>
-          <RadialBar background dataKey="value" cornerRadius={6} />
-          <Tooltip formatter={(v: number) => [`${v}/100`, 'Area Quality Index']} contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', color: '#94a3b8', fontSize: 12 }} />
+      <ResponsiveContainer width="100%" height={140}>
+        <RadialBarChart cx="50%" cy="76%" innerRadius="60%" outerRadius="100%" startAngle={180} endAngle={0} data={[{ name: 'AQI', value: index, fill: color }]} barSize={20}>
+          <RadialBar background dataKey="value" cornerRadius={5} />
+          <Tooltip contentStyle={{ background: '#1c1c1c', border: '1px solid rgba(255,255,255,0.08)', color: '#94a3b8', fontSize: 11 }} formatter={(v: number) => [`${v}/100`, 'AQI']} />
         </RadialBarChart>
       </ResponsiveContainer>
-      <div style={{ marginTop: -28, fontSize: '2rem', fontWeight: 800, color }}>{index}</div>
-      <div style={{ fontSize: '0.76rem', color: '#64748b', marginTop: 2 }}>Area Quality Index / 100</div>
+      <div style={{ marginTop: -24, fontSize: '1.7rem', fontWeight: 800, color, fontVariantNumeric: 'tabular-nums' }}>{index}</div>
+      <div style={{ fontSize: '0.72rem', color: '#666666', marginTop: 2, letterSpacing: '0.05em' }}>AREA QUALITY INDEX</div>
     </div>
   );
 }
 
-// ── Recharts: Competitor Radar ────────────────────────────────────────────────
+function LFIGauge({ index }: { index: number }) {
+  const color = index >= 65 ? '#f87171' : index >= 40 ? '#fbbf24' : '#4ade80';
+  return (
+    <div style={{ textAlign: 'center' }}>
+      <ResponsiveContainer width="100%" height={140}>
+        <RadialBarChart cx="50%" cy="76%" innerRadius="60%" outerRadius="100%" startAngle={180} endAngle={0} data={[{ name: 'LFI', value: index, fill: color }]} barSize={20}>
+          <RadialBar background dataKey="value" cornerRadius={5} />
+          <Tooltip contentStyle={{ background: '#1c1c1c', border: '1px solid rgba(255,255,255,0.08)', color: '#94a3b8', fontSize: 11 }} formatter={(v: number) => [`${v}/100`, 'LFI']} />
+        </RadialBarChart>
+      </ResponsiveContainer>
+      <div style={{ marginTop: -24, fontSize: '1.7rem', fontWeight: 800, color, fontVariantNumeric: 'tabular-nums' }}>{index}</div>
+      <div style={{ fontSize: '0.72rem', color: '#666666', marginTop: 2, letterSpacing: '0.05em' }}>LABOR FRICTION INDEX</div>
+    </div>
+  );
+}
 
 function CompetitorRadar({ data }: { data: RadarPoint[] }) {
   if (!data.length) return null;
   return (
-    <ResponsiveContainer width="100%" height={260}>
-      <RadarChart data={data} margin={{ top: 10, right: 20, bottom: 10, left: 20 }}>
-        <PolarGrid stroke="rgba(148,163,184,0.15)" />
-        <PolarAngleAxis dataKey="metric" tick={{ fill: '#64748b', fontSize: 11 }} />
+    <ResponsiveContainer width="100%" height={240}>
+      <RadarChart data={data} margin={{ top: 8, right: 16, bottom: 8, left: 16 }}>
+        <PolarGrid stroke="rgba(148,163,184,0.12)" />
+        <PolarAngleAxis dataKey="metric" tick={{ fill: '#666666', fontSize: 10 }} />
         <PolarRadiusAxis angle={90} domain={[0, 100]} tick={false} axisLine={false} />
-        <Radar name="This business" dataKey="target" stroke="#38bdf8" fill="#38bdf8" fillOpacity={0.25} strokeWidth={2} />
-        <Radar name="Market avg" dataKey="market" stroke="#fbbf24" fill="#fbbf24" fillOpacity={0.12} strokeWidth={1.5} strokeDasharray="4 3" />
-        <Legend iconType="plainline" wrapperStyle={{ fontSize: 11, color: '#64748b' }} />
-        <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', color: '#94a3b8', fontSize: 12 }} formatter={(v: number, name: string) => [`${v}/100`, name]} />
+        <Radar name="This business" dataKey="target" stroke="#4e9a66" fill="#4e9a66" fillOpacity={0.2} strokeWidth={1.5} />
+        <Radar name="Market avg" dataKey="market" stroke="#fbbf24" fill="#fbbf24" fillOpacity={0.08} strokeWidth={1} strokeDasharray="4 3" />
+        <Legend iconType="plainline" wrapperStyle={{ fontSize: 10, color: '#666666' }} />
+        <Tooltip contentStyle={{ background: '#1c1c1c', border: '1px solid rgba(255,255,255,0.08)', color: '#94a3b8', fontSize: 11 }} formatter={(v: number, n: string) => [`${v}/100`, n]} />
       </RadarChart>
     </ResponsiveContainer>
   );
 }
 
-// ── Recharts: Labor Friction Gauge ────────────────────────────────────────────
-
-function LaborFrictionGauge({ lf }: { lf: LaborFriction }) {
-  const color = lf.index >= 65 ? '#f87171' : lf.index >= 40 ? '#fbbf24' : '#4ade80';
-  const data = [{ name: 'LFI', value: lf.index, fill: color }];
-  return (
-    <div style={{ textAlign: 'center' }}>
-      <ResponsiveContainer width="100%" height={160}>
-        <RadialBarChart cx="50%" cy="80%" innerRadius="60%" outerRadius="100%"
-          startAngle={180} endAngle={0} data={data} barSize={22}>
-          <RadialBar background dataKey="value" cornerRadius={6} />
-          <Tooltip formatter={(v: number) => [`${v}/100`, 'Labor Friction Index']} contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', color: '#94a3b8', fontSize: 12 }} />
-        </RadialBarChart>
-      </ResponsiveContainer>
-      <div style={{ marginTop: -28, fontSize: '2rem', fontWeight: 800, color }}>{lf.index}</div>
-      <div style={{ fontSize: '0.76rem', color: '#64748b', marginTop: 2 }}>Labor Friction Index / 100</div>
-    </div>
-  );
-}
-
-// ── Recharts: PPP Bar Chart ───────────────────────────────────────────────────
-
-function PPPBarChart({ macro }: { macro: MacroData }) {
-  const data = [
-    { label: 'National avg', value: 100, fill: '#475569' },
-    { label: macro.city ?? macro.bundesland ?? 'Local', value: macro.ppp_index, fill: macro.ppp_index >= 100 ? '#4ade80' : '#f87171' },
-  ];
-  return (
-    <ResponsiveContainer width="100%" height={120}>
-      <BarChart data={data} layout="vertical" margin={{ left: 16, right: 24, top: 6, bottom: 6 }}>
-        <CartesianGrid horizontal={false} stroke="rgba(148,163,184,0.08)" />
-        <XAxis type="number" domain={[80, 120]} tickFormatter={v => `${v}`} tick={{ fill: '#475569', fontSize: 11 }} axisLine={false} tickLine={false} />
-        <YAxis type="category" dataKey="label" tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} width={88} />
-        <Tooltip formatter={(v: number) => [`${v.toFixed(1)}`, 'PPP Index']} contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', color: '#94a3b8', fontSize: 12 }} />
-        <ReferenceLine x={100} stroke="rgba(148,163,184,0.3)" strokeDasharray="4 3" />
-        <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={28}>
-          {data.map((entry, i) => <Cell key={i} fill={entry.fill} fillOpacity={0.8} />)}
-        </Bar>
-      </BarChart>
-    </ResponsiveContainer>
-  );
-}
-
-// ── Recharts: Market Timeline ─────────────────────────────────────────────────
-
-function MarketTimelineChart({ points }: { points: TimelinePoint[] }) {
+function MarketTimeline({ points }: { points: TimelinePoint[] }) {
   if (!points.length) return null;
   const maxRev = Math.max(...points.map(p => p.reviews), 1);
-  const normalizedData = points.map(p => ({
-    ...p,
-    reviews_norm: Math.round((p.reviews / maxRev) * 100),
-  }));
+  const data = points.map(p => ({ ...p, reviews_norm: Math.round((p.reviews / maxRev) * 100) }));
   return (
-    <ResponsiveContainer width="100%" height={220}>
-      <LineChart data={normalizedData} margin={{ top: 10, right: 20, bottom: 20, left: 10 }}>
-        <CartesianGrid stroke="rgba(148,163,184,0.08)" vertical={false} />
-        <XAxis dataKey="period" tick={{ fill: '#475569', fontSize: 10 }} interval={3} angle={-30} textAnchor="end" axisLine={false} tickLine={false} />
-        <YAxis domain={[0, 130]} tick={{ fill: '#475569', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => `${v}`} />
-        <Tooltip
-          contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', color: '#94a3b8', fontSize: 12 }}
-          formatter={(v: number, name: string) => [
-            name === 'trends_index' ? `${v}/100 market index` : `${v}/100 normalized reviews`,
-            name === 'trends_index' ? 'Market Index' : 'Review Activity',
-          ]}
-        />
-        <Legend wrapperStyle={{ fontSize: 11, color: '#64748b' }} />
-        <Line type="monotone" dataKey="trends_index" name="Market Index" stroke="#38bdf8" strokeWidth={2} dot={false} />
-        <Line type="monotone" dataKey="reviews_norm" name="Review Activity" stroke="#fbbf24" strokeWidth={1.5} dot={false} strokeDasharray="4 3" />
+    <ResponsiveContainer width="100%" height={200}>
+      <LineChart data={data} margin={{ top: 8, right: 16, bottom: 20, left: 8 }}>
+        <CartesianGrid stroke="rgba(148,163,184,0.06)" vertical={false} />
+        <XAxis dataKey="period" tick={{ fill: '#444444', fontSize: 9 }} interval={4} angle={-30} textAnchor="end" axisLine={false} tickLine={false} />
+        <YAxis domain={[0, 130]} tick={{ fill: '#444444', fontSize: 9 }} axisLine={false} tickLine={false} />
+        <Tooltip contentStyle={{ background: '#1c1c1c', border: '1px solid rgba(255,255,255,0.08)', color: '#94a3b8', fontSize: 11 }}
+          formatter={(v: number, name: string) => [name === 'trends_index' ? `${v} market idx` : `${v}/100 review act.`, name === 'trends_index' ? 'Market Index' : 'Review Activity']} />
+        <Line type="monotone" dataKey="trends_index" name="Market Index" stroke="#4e9a66" strokeWidth={1.5} dot={false} />
+        <Line type="monotone" dataKey="reviews_norm" name="Review Activity" stroke="#fbbf24" strokeWidth={1} dot={false} strokeDasharray="4 2" />
       </LineChart>
     </ResponsiveContainer>
   );
 }
 
-// ── P&L Table ─────────────────────────────────────────────────────────────────
+// ── Range display ──────────────────────────────────────────────────────────────
 
-function PLTable({ pl }: { pl: SyntheticPL }) {
-  const rev = pl.estimated_revenue;
-  const rows: { label: string; value: string; sub?: boolean; highlight?: 'green' | 'red' | 'blue'; }[] = [
-    { label: 'Estimated Revenue', value: fmtEur(rev), highlight: 'blue' },
-    { label: `COGS (${(100 - pl.gross_margin_pct).toFixed(0)}%)`, value: `− ${fmtEur(pl.cogs)}`, sub: true },
-    { label: `Gross Profit (${pl.gross_margin_pct.toFixed(0)}%)`, value: fmtEur(pl.gross_profit), highlight: 'green' },
-    { label: `Personnel (${pl.fte_estimate} FTE)`, value: `− ${fmtEur(pl.personnel_cost)}`, sub: true },
-    { label: `Facility (${pl.facility_sqm}m²)`, value: `− ${fmtEur(pl.facility_cost)}`, sub: true },
-    { label: 'Other OpEx (8%)', value: `− ${fmtEur(pl.other_opex)}`, sub: true },
-    { label: `EBITDA${pl.ebitda_margin_pct != null ? ` (${pl.ebitda_margin_pct.toFixed(1)}%)` : ''}`, value: fmtEur(pl.ebitda), highlight: pl.ebitda >= 0 ? 'green' : 'red' },
-  ];
-  const colors: Record<string, string> = { green: '#4ade80', red: '#f87171', blue: '#38bdf8' };
+function RangeBar({ range, formatter = fmtEur, label }: { range: FinancialRange; formatter?: (n: number) => string; label?: string }) {
+  const total = range.high - range.low;
+  const midPct = total > 0 ? ((range.mid - range.low) / total) * 100 : 50;
+  const isNegative = range.mid < 0;
   return (
-    <div>
-      {rows.map((row, i) => (
-        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 12px', borderRadius: 7, marginBottom: 3, background: row.highlight ? `${colors[row.highlight]}08` : 'transparent', borderLeft: row.highlight ? `3px solid ${colors[row.highlight]}40` : '3px solid transparent' }}>
-          <span style={{ fontSize: '0.83rem', color: row.sub ? '#475569' : '#94a3b8', paddingLeft: row.sub ? 10 : 0 }}>{row.label}</span>
-          <span style={{ fontSize: '0.85rem', fontWeight: 700, color: row.highlight ? colors[row.highlight] : '#94a3b8', fontVariantNumeric: 'tabular-nums' }}>{row.value}</span>
+    <div style={{ marginBottom: 2 }}>
+      {label && <div style={{ fontSize: '0.72rem', color: '#666666', marginBottom: 4 }}>{label}</div>}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span style={{ fontSize: '0.77rem', color: '#444444', minWidth: 52, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{formatter(range.low)}</span>
+        <div style={{ flex: 1, height: 6, background: 'rgba(148,163,184,0.1)', borderRadius: 3, position: 'relative' }}>
+          <div style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, background: 'rgba(78,154,102,0.12)', borderRadius: 3 }} />
+          <div style={{ position: 'absolute', left: `${midPct}%`, transform: 'translateX(-50%)', top: -2, width: 10, height: 10, borderRadius: '50%', background: isNegative ? '#f87171' : '#4e9a66', border: '2px solid #0f172a' }} />
         </div>
-      ))}
-      <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 7, background: 'rgba(148,163,184,0.05)', border: '1px solid rgba(148,163,184,0.1)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-          <span style={{ fontSize: '0.78rem', color: '#475569' }}>Breakeven Revenue</span>
-          <span style={{ fontSize: '0.78rem', color: '#64748b' }}>{fmtEur(pl.breakeven_revenue)}</span>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-          <span style={{ fontSize: '0.78rem', color: '#475569' }}>Fixed Cost Ratio</span>
-          <span style={{ fontSize: '0.78rem', color: '#64748b' }}>{(pl.fixed_cost_ratio * 100).toFixed(1)}%</span>
-        </div>
-        {pl.industry_avg_ebitda_margin != null && (
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '0.78rem', color: '#475569' }}>Sector Avg EBITDA Margin</span>
-            <span style={{ fontSize: '0.78rem', color: '#64748b' }}>{pl.industry_avg_ebitda_margin}%</span>
-          </div>
-        )}
+        <span style={{ fontSize: '0.77rem', color: '#666666', minWidth: 52, fontVariantNumeric: 'tabular-nums' }}>{formatter(range.high)}</span>
+        <span style={{ fontSize: '0.8rem', fontWeight: 700, color: isNegative ? '#f87171' : '#94a3b8', minWidth: 60, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{formatter(range.mid)}</span>
       </div>
     </div>
   );
 }
 
-// ── EBITDA Benchmark Bar Chart ────────────────────────────────────────────────
+// ── Task 1: Probabilistic Revenue Chart ───────────────────────────────────────
 
-function EbitdaBenchmarkChart({ pl }: { pl: SyntheticPL }) {
-  if (pl.ebitda_margin_pct == null || pl.industry_avg_ebitda_margin == null) return null;
+function ProbabilisticRevChart({ pl }: { pl: SyntheticPL }) {
+  const g = (base: number, rate: number, y: number) => Math.round(base * Math.pow(1 + rate, y));
+  const data = [0, 1, 2, 3, 4, 5].map(y => ({
+    year: y === 0 ? 'Y0' : `Y+${y}`,
+    bear: g(pl.revenue.low,  0.01, y),
+    base: g(pl.revenue.mid,  0.04, y),
+    bull: g(pl.revenue.high, 0.08, y),
+  }));
+  const tip = { background: '#1c1c1c', border: '1px solid rgba(255,255,255,0.08)', color: '#888', fontSize: 11 };
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <div style={{ fontSize: '0.7rem', color: '#666666', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: 10 }}>
+        5-Year Probabilistic Revenue Trajectory
+      </div>
+      <ResponsiveContainer width="100%" height={220}>
+        <ComposedChart data={data} margin={{ top: 8, right: 16, bottom: 4, left: 8 }}>
+          <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
+          <XAxis dataKey="year" tick={{ fill: '#666', fontSize: 10 }} axisLine={false} tickLine={false} />
+          <YAxis tickFormatter={fmtEur} tick={{ fill: '#666', fontSize: 10 }} axisLine={false} tickLine={false} width={54} />
+          <Tooltip contentStyle={tip} formatter={(v: number, name: string) => [fmtEur(v as number), name === 'bear' ? 'Bear' : name === 'base' ? 'Base' : 'Bull']} />
+          {/* Confidence band: bull area then bear area masks below */}
+          <Area type="monotone" dataKey="bull" stroke="none" fill="#4e9a66" fillOpacity={0.14} legendType="none" />
+          <Area type="monotone" dataKey="bear" stroke="none" fill="#111111" fillOpacity={1} legendType="none" />
+          {/* Scenario lines */}
+          <Line type="monotone" dataKey="bear" stroke="#f87171" strokeWidth={1.5} dot={false} name="Bear" strokeDasharray="4 3" />
+          <Line type="monotone" dataKey="base" stroke="#1db954" strokeWidth={2.5} dot={{ fill: '#1db954', r: 3 }} name="Base" />
+          <Line type="monotone" dataKey="bull" stroke="#6dbf87" strokeWidth={1.5} dot={false} name="Bull" strokeDasharray="4 3" />
+          <Legend iconType="plainline" wrapperStyle={{ fontSize: 10, color: '#888', paddingTop: 6 }} />
+        </ComposedChart>
+      </ResponsiveContainer>
+      <div style={{ display: 'flex', gap: 6, justifyContent: 'center', marginTop: 4, fontSize: '0.72rem', color: '#666' }}>
+        <span>Bear <span style={{ color: '#f87171', fontVariantNumeric: 'tabular-nums' }}>{fmtEur(data[0].bear)}</span></span>
+        <span style={{ color: '#2a2a2a' }}>|</span>
+        <span>Base <span style={{ color: '#1db954', fontVariantNumeric: 'tabular-nums' }}>{fmtEur(data[0].base)}</span></span>
+        <span style={{ color: '#2a2a2a' }}>|</span>
+        <span>Bull <span style={{ color: '#6dbf87', fontVariantNumeric: 'tabular-nums' }}>{fmtEur(data[0].bull)}</span></span>
+      </div>
+    </div>
+  );
+}
+
+// ── Task 4: Abstract Spatial Map ───────────────────────────────────────────────
+
+function AbstractSpatialMap({ sc, pois, r }: { sc: SpatialContext; pois: PointOfInterest[]; r: { latitude: number; longitude: number } }) {
+  const W = 340, H = 300, CX = W / 2, CY = H / 2;
+  // Scale: 1000m → 120px radius
+  const scale = 120 / 1000;
+  const toXY = (lat: number, lng: number) => {
+    const dx = (lng - r.longitude) * 111320 * Math.cos(r.latitude * Math.PI / 180);
+    const dy = -(lat - r.latitude) * 110540;
+    return { x: CX + dx * scale, y: CY + dy * scale };
+  };
+  const catColor: Record<string, string> = { tourism: '#4e9a66', amenity: '#a78bfa', historic: '#fbbf24', leisure: '#6dbf87' };
+  const transportPos = sc.nearest_transport ? (() => {
+    // Estimate direction from distance (we don't have actual lat/lng for transport, use angle 45°)
+    const dist = sc.nearest_transport.distance_m * scale;
+    return { x: CX + dist * 0.707, y: CY - dist * 0.707 };
+  })() : null;
+
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <div style={{ fontSize: '0.7rem', color: '#666666', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: 10 }}>
+        Abstract Spatial Context
+      </div>
+      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <svg width={W} height={H} style={{ background: '#161616', borderRadius: 12, border: '1px solid rgba(255,255,255,0.06)', flexShrink: 0 }}>
+          {/* Distance rings */}
+          {[200, 500, 1000].map(m => (
+            <circle key={m} cx={CX} cy={CY} r={m * scale}
+              fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth={1}
+              strokeDasharray={m === 1000 ? '4 4' : 'none'} />
+          ))}
+          {/* Ring labels */}
+          {[200, 500, 1000].map(m => (
+            <text key={m} x={CX + m * scale + 4} y={CY + 4} fontSize={8} fill="rgba(255,255,255,0.18)" fontFamily="Helvetica Neue, sans-serif">{m}m</text>
+          ))}
+          {/* POI dots */}
+          {pois.slice(0, 40).map(poi => {
+            const { x, y } = toXY(poi.lat, poi.lng);
+            if (x < 0 || x > W || y < 0 || y > H) return null;
+            const c = catColor[poi.category] ?? '#666';
+            return <circle key={poi.id} cx={x} cy={y} r={4} fill={c} fillOpacity={0.7} stroke={c} strokeWidth={0.5} strokeOpacity={0.4} />;
+          })}
+          {/* Vector line to transport hub */}
+          {transportPos && (
+            <>
+              <line x1={CX} y1={CY} x2={transportPos.x} y2={transportPos.y}
+                stroke="#fbbf24" strokeWidth={1.5} strokeDasharray="5 3" strokeOpacity={0.6} />
+              <circle cx={transportPos.x} cy={transportPos.y} r={7}
+                fill="#fbbf2415" stroke="#fbbf24" strokeWidth={1.5} />
+              <text x={transportPos.x + 10} y={transportPos.y + 4} fontSize={9} fill="#fbbf24" fontFamily="Helvetica Neue, sans-serif">
+                {sc.nearest_transport?.type}
+              </text>
+            </>
+          )}
+          {/* Business location */}
+          <circle cx={CX} cy={CY} r={8} fill="#1db954" fillOpacity={0.15} stroke="#1db954" strokeWidth={2} />
+          <circle cx={CX} cy={CY} r={3} fill="#1db954" />
+          {/* City center direction indicator */}
+          {sc.city_center_distance_m != null && (
+            <>
+              <line x1={CX} y1={CY} x2={CX - 40} y2={CY + 30}
+                stroke="rgba(255,255,255,0.18)" strokeWidth={1} strokeDasharray="3 4" />
+              <text x={CX - 80} y={CY + 42} fontSize={8} fill="rgba(255,255,255,0.3)" fontFamily="Helvetica Neue, sans-serif">
+                City Centre {(sc.city_center_distance_m / 1000).toFixed(1)}km
+              </text>
+            </>
+          )}
+        </svg>
+        {/* Legend */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: '0.77rem', paddingTop: 4 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+            <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#1db954' }} />
+            <span style={{ color: '#888' }}>This business</span>
+          </div>
+          {sc.nearest_transport && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+              <div style={{ width: 10, height: 10, borderRadius: '50%', border: '1.5px solid #fbbf24', background: 'transparent' }} />
+              <span style={{ color: '#888' }}>{sc.nearest_transport.type} ({sc.nearest_transport.distance_m}m)</span>
+            </div>
+          )}
+          <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 6, marginTop: 2 }}>
+            <div style={{ fontSize: '0.68rem', color: '#666', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.06em' }}>POI Categories</div>
+            {Object.entries(catColor).map(([cat, col]) => (
+              <div key={cat} style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 4 }}>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: col }} />
+                <span style={{ color: '#666', textTransform: 'capitalize' }}>{cat}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── P&L Range Table ────────────────────────────────────────────────────────────
+
+function PLRangeTable({ pl }: { pl: SyntheticPL }) {
+  const rows: { label: string; range?: FinancialRange; single?: number; sub?: boolean; bold?: boolean; accent?: string; }[] = [
+    { label: 'Revenue', range: pl.revenue, bold: true },
+    { label: `COGS (${(100 - pl.gross_margin_pct).toFixed(0)}%)`, range: { low: -pl.cogs.high, mid: -pl.cogs.mid, high: -pl.cogs.low }, sub: true },
+    { label: `Gross Profit (${pl.gross_margin_pct}%)`, range: pl.gross_profit, bold: true, accent: '#4e9a66' },
+    { label: `Personnel — ${pl.fte_estimate} FTE`, single: -pl.personnel_cost, sub: true },
+    { label: `Facility — ${pl.facility_sqm}m²`, single: -pl.facility_cost, sub: true },
+    { label: 'Other OpEx (8% var.)', range: { low: -pl.other_opex.high, mid: -pl.other_opex.mid, high: -pl.other_opex.low }, sub: true },
+    { label: 'EBITDA', range: pl.ebitda, bold: true, accent: pl.ebitda.mid >= 0 ? '#4ade80' : '#f87171' },
+  ];
+
+  return (
+    <div className="pl-table">
+      <div className="pl-table-header">
+        <span>Line Item</span>
+        <span style={{ textAlign: 'right' }}>Bear</span>
+        <span style={{ textAlign: 'right' }}>Base</span>
+        <span style={{ textAlign: 'right' }}>Bull</span>
+      </div>
+      {rows.map((row, i) => {
+        const low  = row.single !== undefined ? row.single : (row.range?.low  ?? 0);
+        const mid  = row.single !== undefined ? row.single : (row.range?.mid  ?? 0);
+        const high = row.single !== undefined ? row.single : (row.range?.high ?? 0);
+        return (
+          <div key={i} className={`pl-table-row${row.bold ? ' pl-table-row-bold' : ''}${row.sub ? ' pl-table-row-sub' : ''}`}
+            style={row.accent ? { color: row.accent } : undefined}>
+            <span>{row.label}</span>
+            <span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: low < 0 ? '#f87171' : '#94a3b8' }}>{fmtEur(low)}</span>
+            <span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: row.accent ?? (mid < 0 ? '#f87171' : '#94a3b8') }}>{fmtEur(mid)}</span>
+            <span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: high < 0 ? '#f87171' : '#4ade80' }}>{fmtEur(high)}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Dependency Matrix ──────────────────────────────────────────────────────────
+
+function DependencyMatrixBlock({ dm }: { dm: DependencyMatrix }) {
+  const severityColor: Record<string, string> = { critical: '#f87171', high: '#fb923c', medium: '#fbbf24', low: '#4ade80' };
+  const trendIcon: Record<string, string> = { worsening: '↑', stable: '→', improving: '↓' };
+  const trendColor: Record<string, string> = { worsening: '#f87171', stable: '#888888', improving: '#4ade80' };
+  return (
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+        <div style={{ padding: '12px 14px', borderRadius: 8, background: 'rgba(78,154,102,0.06)', border: '1px solid rgba(78,154,102,0.12)' }}>
+          <div style={{ fontSize: '0.7rem', color: '#4e9a66', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 6 }}>Business Model</div>
+          <p style={{ margin: 0, fontSize: '0.79rem', color: '#888888', lineHeight: 1.55 }}>{dm.business_model_summary}</p>
+        </div>
+        <div style={{ padding: '12px 14px', borderRadius: 8, background: 'rgba(251,191,36,0.04)', border: '1px solid rgba(251,191,36,0.12)' }}>
+          <div style={{ fontSize: '0.7rem', color: '#fbbf24', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 6 }}>Primary Leverage</div>
+          <p style={{ margin: 0, fontSize: '0.79rem', color: '#888888', lineHeight: 1.55 }}>{dm.primary_leverage}</p>
+        </div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {dm.drivers.map((d, i) => (
+          <div key={i} style={{ display: 'grid', gridTemplateColumns: '180px 1fr 70px 60px', gap: 12, alignItems: 'start', padding: '10px 12px', borderRadius: 6, background: 'rgba(148,163,184,0.03)', borderLeft: `3px solid ${severityColor[d.severity]}40` }}>
+            <div>
+              <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#94a3b8', marginBottom: 2 }}>{d.name}</div>
+              <span style={{ fontSize: '0.68rem', padding: '1px 6px', borderRadius: 4, background: `${severityColor[d.severity]}18`, color: severityColor[d.severity] }}>{d.severity}</span>
+            </div>
+            <div style={{ fontSize: '0.77rem', color: '#666666', lineHeight: 1.5 }}>{d.description}</div>
+            <div style={{ fontSize: '0.77rem', color: trendColor[d.trend], fontWeight: 600, textAlign: 'center' }}>{trendIcon[d.trend]} {d.trend}</div>
+            <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#f87171', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{d.ebitda_impact_pct.toFixed(1)}pp</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end', gap: 4, alignItems: 'center' }}>
+        <span style={{ fontSize: '0.77rem', color: '#666666' }}>Net EBITDA drag from structural pressures:</span>
+        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#f87171', fontVariantNumeric: 'tabular-nums' }}>{dm.net_ebitda_drag_pct.toFixed(1)}pp</span>
+      </div>
+    </div>
+  );
+}
+
+// ── Sanity check badge ─────────────────────────────────────────────────────────
+
+function SanityBadge({ sc }: { sc: SanityCheck }) {
+  if (!sc.overheated) return null;
+  return (
+    <div style={{ padding: '8px 12px', borderRadius: 6, background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.2)', fontSize: '0.77rem', color: '#fbbf24', lineHeight: 1.5 }}>
+      <span style={{ fontWeight: 700 }}>⚠ Model ceiling applied — </span>{sc.compression_note}
+    </div>
+  );
+}
+
+// ── PPP Bar ────────────────────────────────────────────────────────────────────
+
+function PPPBar({ macro }: { macro: MacroData }) {
   const data = [
-    { label: 'Sector Avg', value: pl.industry_avg_ebitda_margin, fill: '#475569' },
-    { label: 'This Business', value: pl.ebitda_margin_pct, fill: pl.ebitda_margin_pct >= pl.industry_avg_ebitda_margin ? '#4ade80' : '#f87171' },
+    { label: 'National avg', value: 100, fill: '#444444' },
+    { label: macro.city ?? macro.bundesland ?? 'Local', value: macro.ppp_index, fill: macro.ppp_index >= 100 ? '#4ade80' : '#f87171' },
   ];
   return (
-    <ResponsiveContainer width="100%" height={110}>
-      <BarChart data={data} layout="vertical" margin={{ left: 16, right: 36, top: 4, bottom: 4 }}>
-        <CartesianGrid horizontal={false} stroke="rgba(148,163,184,0.08)" />
-        <XAxis type="number" tickFormatter={v => `${v}%`} tick={{ fill: '#475569', fontSize: 11 }} axisLine={false} tickLine={false} />
-        <YAxis type="category" dataKey="label" tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} width={90} />
-        <Tooltip formatter={(v: number) => [`${v.toFixed(1)}%`, 'EBITDA Margin']} contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', color: '#94a3b8', fontSize: 12 }} />
-        <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={26}>
-          {data.map((entry, i) => <Cell key={i} fill={entry.fill} fillOpacity={0.8} />)}
+    <ResponsiveContainer width="100%" height={100}>
+      <BarChart data={data} layout="vertical" margin={{ left: 8, right: 32, top: 4, bottom: 4 }}>
+        <CartesianGrid horizontal={false} stroke="rgba(148,163,184,0.06)" />
+        <XAxis type="number" domain={[75, 120]} tick={{ fill: '#444444', fontSize: 10 }} axisLine={false} tickLine={false} />
+        <YAxis type="category" dataKey="label" tick={{ fill: '#666666', fontSize: 10 }} axisLine={false} tickLine={false} width={80} />
+        <ReferenceLine x={100} stroke="rgba(148,163,184,0.25)" strokeDasharray="3 3" />
+        <Tooltip contentStyle={{ background: '#1c1c1c', border: '1px solid rgba(255,255,255,0.08)', color: '#94a3b8', fontSize: 11 }} formatter={(v: number) => [`${v.toFixed(1)}`, 'PPP Index']} />
+        <Bar dataKey="value" radius={[0, 3, 3, 0]} barSize={24}>
+          {data.map((e, i) => <Cell key={i} fill={e.fill} fillOpacity={0.75} />)}
         </Bar>
       </BarChart>
     </ResponsiveContainer>
   );
 }
 
-// ── Risk Matrix Panel ─────────────────────────────────────────────────────────
+// ── EBITDA benchmark chart ─────────────────────────────────────────────────────
 
-function RiskMatrix({ pl }: { pl: SyntheticPL }) {
-  const risks = [
-    { label: 'High Fixed Cost Risk', active: pl.high_fixed_cost_risk, desc: `Fixed costs = ${(pl.fixed_cost_ratio * 100).toFixed(1)}% of revenue` },
-    { label: 'Rent Burden', active: pl.rent_as_revenue_pct != null && pl.rent_as_revenue_pct > 12, desc: pl.rent_as_revenue_pct != null ? `Rent = ${pl.rent_as_revenue_pct.toFixed(1)}% of revenue (threshold: 12%)` : '—' },
-    { label: 'Labour Burden', active: pl.personnel_as_revenue_pct != null && pl.personnel_as_revenue_pct > 35, desc: pl.personnel_as_revenue_pct != null ? `Personnel = ${pl.personnel_as_revenue_pct.toFixed(1)}% of revenue (threshold: 35%)` : '—' },
-    { label: 'Below-Breakeven Risk', active: pl.estimated_revenue < pl.breakeven_revenue, desc: `Rev ${fmtEur(pl.estimated_revenue)} vs breakeven ${fmtEur(pl.breakeven_revenue)}` },
-    { label: 'Below-Sector EBITDA', active: pl.ebitda_margin_pct != null && pl.industry_avg_ebitda_margin != null && pl.ebitda_margin_pct < pl.industry_avg_ebitda_margin, desc: pl.ebitda_margin_pct != null && pl.industry_avg_ebitda_margin != null ? `${pl.ebitda_margin_pct.toFixed(1)}% vs sector ${pl.industry_avg_ebitda_margin}%` : '—' },
+function EbitdaBenchmark({ pl }: { pl: SyntheticPL }) {
+  if (!pl.ebitda_margin_pct || !pl.industry_avg_ebitda_margin) return null;
+  const data = [
+    { label: 'Sector avg', value: pl.industry_avg_ebitda_margin, fill: '#444444' },
+    { label: 'Bear', value: pl.ebitda_margin_pct.low, fill: '#f87171' },
+    { label: 'Base', value: pl.ebitda_margin_pct.mid, fill: pl.ebitda_margin_pct.mid >= pl.industry_avg_ebitda_margin ? '#4ade80' : '#f87171' },
+    { label: 'Bull', value: pl.ebitda_margin_pct.high, fill: '#4ade80' },
   ];
-  const activeCount = risks.filter(r => r.active).length;
   return (
-    <div style={{ background: 'rgba(148,163,184,0.04)', border: '1px solid rgba(148,163,184,0.1)', borderRadius: 12, padding: '14px 16px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#38bdf8', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Risk Matrix</div>
-        <div style={{ fontSize: '0.78rem', color: activeCount >= 3 ? '#f87171' : activeCount >= 2 ? '#fbbf24' : '#4ade80', fontWeight: 700 }}>{activeCount} / {risks.length} flags active</div>
+    <ResponsiveContainer width="100%" height={130}>
+      <BarChart data={data} layout="vertical" margin={{ left: 8, right: 36, top: 4, bottom: 4 }}>
+        <CartesianGrid horizontal={false} stroke="rgba(148,163,184,0.06)" />
+        <XAxis type="number" tickFormatter={v => `${v}%`} tick={{ fill: '#444444', fontSize: 10 }} axisLine={false} tickLine={false} />
+        <YAxis type="category" dataKey="label" tick={{ fill: '#666666', fontSize: 10 }} axisLine={false} tickLine={false} width={54} />
+        <ReferenceLine x={pl.industry_avg_ebitda_margin} stroke="rgba(78,154,102,0.3)" strokeDasharray="3 3" />
+        <Tooltip contentStyle={{ background: '#1c1c1c', border: '1px solid rgba(255,255,255,0.08)', color: '#94a3b8', fontSize: 11 }} formatter={(v: number) => [`${v.toFixed(1)}%`, 'EBITDA Margin']} />
+        <Bar dataKey="value" radius={[0, 3, 3, 0]} barSize={20}>
+          {data.map((e, i) => <Cell key={i} fill={e.fill} fillOpacity={0.8} />)}
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+// ── Foot traffic score bar ─────────────────────────────────────────────────────
+
+function FootTrafficBar({ score }: { score: number }) {
+  const color = score >= 70 ? '#4ade80' : score >= 45 ? '#fbbf24' : '#f87171';
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div style={{ flex: 1, height: 6, background: 'rgba(148,163,184,0.1)', borderRadius: 3 }}>
+        <div style={{ width: `${score}%`, height: '100%', background: color, borderRadius: 3 }} />
       </div>
-      {risks.map((r, i) => (
-        <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 7 }}>
-          <span style={{ color: r.active ? '#f87171' : '#334155', fontSize: '0.85rem', lineHeight: 1, marginTop: 1 }}>{r.active ? '⚠' : '✓'}</span>
-          <div>
-            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: r.active ? '#f87171' : '#475569' }}>{r.label}</span>
-            <span style={{ fontSize: '0.77rem', color: '#334155', marginLeft: 8 }}>{r.desc}</span>
-          </div>
-        </div>
-      ))}
-      {pl.risk_summary && <p style={{ margin: '10px 0 0', fontSize: '0.8rem', color: '#64748b', lineHeight: 1.5, borderTop: '1px solid rgba(148,163,184,0.1)', paddingTop: 10 }}>{pl.risk_summary}</p>}
+      <span style={{ fontSize: '0.85rem', fontWeight: 700, color, minWidth: 38, fontVariantNumeric: 'tabular-nums' }}>{score}/100</span>
     </div>
   );
 }
 
-// ── Result Card ───────────────────────────────────────────────────────────────
+// ── Zone badge ─────────────────────────────────────────────────────────────────
+
+function ZoneBadge({ zone }: { zone: string }) {
+  const map: Record<string, [string, string]> = {
+    prime_commercial:    ['Prime Commercial', '#4ade80'],
+    secondary_commercial:['Secondary Commercial', '#4e9a66'],
+    mixed_use:           ['Mixed Use', '#fbbf24'],
+    residential:         ['Residential', '#a78bfa'],
+    peripheral:          ['Peripheral', '#f87171'],
+    unknown:             ['Unknown', '#666666'],
+  };
+  const [label, color] = map[zone] ?? ['—', '#666666'];
+  return <span style={{ fontSize: '0.77rem', padding: '3px 10px', borderRadius: 20, background: `${color}15`, color, border: `1px solid ${color}30`, fontWeight: 600 }}>{label}</span>;
+}
+
+// ── Result card ────────────────────────────────────────────────────────────────
 
 function ResultCard({ r }: { r: ExtractionData }) {
-  const [tab, setTab] = useState('Overview');
   const ad  = r.address_detail ?? {};
   const ra  = r.review_analysis;
   const eco = r.industry_economics;
@@ -383,448 +533,479 @@ function ResultCard({ r }: { r: ExtractionData }) {
   const lf  = r.labor_friction;
   const pl  = r.synthetic_pl;
   const mt  = r.market_timeline ?? [];
+  const sc  = r.spatial_context;
 
   const coords = r.latitude != null && r.longitude != null ? `${r.latitude.toFixed(6)}, ${r.longitude.toFixed(6)}` : null;
   const statusColor = r.business_status === 'OPERATIONAL' ? '#4ade80' : r.business_status === 'CLOSED_TEMPORARILY' ? '#facc15' : '#f87171';
-
   const services = [
-    { label: 'Delivery', value: r.delivery }, { label: 'Dine-in', value: r.dine_in },
-    { label: 'Takeout', value: r.takeout }, { label: 'Reservable', value: r.reservable },
-    { label: 'Curbside', value: r.curbside_pickup }, { label: 'Beer', value: r.serves_beer },
-    { label: 'Wine', value: r.serves_wine }, { label: 'Breakfast', value: r.serves_breakfast },
-    { label: 'Brunch', value: r.serves_brunch }, { label: 'Lunch', value: r.serves_lunch },
-    { label: 'Dinner', value: r.serves_dinner }, { label: 'Wheelchair', value: r.wheelchair_accessible },
-  ].filter(s => s.value !== null);
-
+    { label: 'Delivery', v: r.delivery }, { label: 'Dine-in', v: r.dine_in }, { label: 'Takeout', v: r.takeout },
+    { label: 'Reservable', v: r.reservable }, { label: 'Curbside', v: r.curbside_pickup }, { label: 'Beer', v: r.serves_beer },
+    { label: 'Wine', v: r.serves_wine }, { label: 'Breakfast', v: r.serves_breakfast }, { label: 'Dinner', v: r.serves_dinner },
+    { label: 'Wheelchair', v: r.wheelchair_accessible },
+  ].filter(s => s.v !== null);
   const socialIcons: Record<string, string> = { instagram: '📸', facebook: '👥', linkedin: '💼', twitter: '𝕏', tiktok: '🎵', youtube: '▶️' };
 
-  const tabs = ['Overview', 'Financials', 'Macro', 'Market'];
-
   return (
-    <div className="result-card">
+    <div className="report-card">
 
-      {/* ── Header ── */}
-      <div style={{ marginBottom: 16 }}>
-        <h2 style={{ margin: '0 0 6px' }}>{r.name || 'Unknown business'}</h2>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
-          {r.category && <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}>{r.category.replace(/_/g, ' ')}</span>}
-          {r.business_status && <span style={{ fontSize: '0.76rem', color: statusColor, fontWeight: 700 }}>● {r.business_status.replace(/_/g, ' ')}</span>}
-          {r.is_open !== null && <span style={{ fontSize: '0.76rem', color: r.is_open ? '#4ade80' : '#f87171', fontWeight: 700 }}>{r.is_open ? 'OPEN NOW' : 'CLOSED NOW'}</span>}
+      {/* ═══ IDENTITY ═══ */}
+      <div style={{ marginBottom: 20 }}>
+        <h2 style={{ margin: '0 0 8px', fontSize: '1.4rem', fontWeight: 800, color: '#e2e8f0' }}>{r.name || 'Unknown business'}</h2>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 10 }}>
+          {r.category && <span style={{ fontSize: '0.8rem', color: '#888888', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{r.category.replace(/_/g, ' ')}</span>}
+          {r.business_status && <span style={{ fontSize: '0.75rem', color: statusColor, fontWeight: 700 }}>● {r.business_status.replace(/_/g, ' ')}</span>}
+          {r.is_open !== null && <span style={{ fontSize: '0.75rem', color: r.is_open ? '#4ade80' : '#f87171', fontWeight: 700 }}>{r.is_open ? 'OPEN' : 'CLOSED'}</span>}
           {r.price_level && <span style={{ color: '#fbbf24', fontWeight: 700 }}>{r.price_level}</span>}
         </div>
+        <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+          {r.rating && <span style={{ fontSize: '1.15rem', fontWeight: 800, color: '#fbbf24' }}>★ {r.rating}</span>}
+          {r.review_volume && <span style={{ color: '#666666', fontSize: '0.85rem' }}>{Number(r.review_volume).toLocaleString('de-DE')} reviews</span>}
+          {r.summary && <span style={{ color: '#666666', fontSize: '0.82rem', fontStyle: 'italic' }}>{r.summary}</span>}
+        </div>
+        <div style={{ display: 'flex', gap: 14, fontSize: '0.82rem', flexWrap: 'wrap' }}>
+          {r.google_maps_url && <a href={r.google_maps_url} target="_blank" rel="noreferrer" style={{ color: '#4e9a66' }}>Google Maps →</a>}
+          {r.website && <a href={r.website} target="_blank" rel="noreferrer" style={{ color: '#4e9a66' }}>Website →</a>}
+        </div>
       </div>
 
-      {/* ── Rating ── */}
-      {(r.rating || r.review_volume || r.summary) && (
-        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 14, alignItems: 'center' }}>
-          {r.rating && <span style={{ color: '#fbbf24', fontWeight: 700, fontSize: '1.1rem' }}>★ {r.rating}</span>}
-          {r.review_volume && <span style={{ color: '#94a3b8' }}>{Number(r.review_volume).toLocaleString('de-DE')} reviews</span>}
-          {r.summary && <span style={{ color: '#64748b', fontStyle: 'italic', fontSize: '0.85rem' }}>{r.summary}</span>}
-        </div>
+      <Divider />
+
+      {/* ═══ PRICING POWER ═══ */}
+      {pp && (
+        <>
+          <SectionLabel>Pricing Power Signal</SectionLabel>
+          <div style={{ padding: '14px 16px', borderRadius: 8, background: pp.confirmed ? 'rgba(34,197,94,0.05)' : 'rgba(248,113,113,0.05)', border: `1px solid ${pp.confirmed ? 'rgba(34,197,94,0.2)' : 'rgba(248,113,113,0.15)'}`, marginBottom: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <span style={{ fontSize: '1.2rem' }}>{pp.confirmed ? '✅' : '❌'}</span>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: '0.95rem', color: pp.confirmed ? '#4ade80' : '#f87171' }}>
+                  {pp.confirmed ? 'Confirmed Pricing Power' : 'No Confirmed Pricing Power'}
+                </div>
+                <div style={{ fontSize: '0.76rem', color: '#666666' }}>
+                  {pp.confirmed ? 'Economic moat present — margin expansion viable' : 'Insufficient moat signals for safe price expansion'}
+                </div>
+              </div>
+            </div>
+            <DataGrid>
+              <DataCell label="Price Premium" value={pp.price_premium_index != null ? `${pp.price_premium_index}×` : '—'} accent={pp.price_premium_index != null && pp.price_premium_index > 1 ? 'green' : 'red'} />
+              <DataCell label="Rating Premium" value={pp.rating_premium != null ? (pp.rating_premium >= 0 ? `+${pp.rating_premium}` : String(pp.rating_premium)) : '—'} accent={pp.rating_premium != null && pp.rating_premium >= 0 ? 'green' : 'red'} />
+              <DataCell label="Demand Share" value={pp.local_demand_share_pct != null ? `${pp.local_demand_share_pct}%` : '—'} />
+              <DataCell label="Neg. Price Sentiment" value={pp.neg_price_sentiment_ratio != null ? `${(pp.neg_price_sentiment_ratio * 100).toFixed(1)}%` : '—'} accent={pp.neg_price_sentiment_ratio != null && pp.neg_price_sentiment_ratio < 0.05 ? 'green' : 'red'} />
+            </DataGrid>
+            <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {pp.factors_met.map((f, i) => <div key={i} style={{ fontSize: '0.77rem', color: '#4ade80' }}>✓ {f}</div>)}
+              {pp.factors_missing.map((f, i) => <div key={i} style={{ fontSize: '0.77rem', color: '#f87171' }}>✗ {f}</div>)}
+            </div>
+          </div>
+          <Divider />
+        </>
       )}
 
-      {/* ── Links ── */}
-      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 20, fontSize: '0.85rem' }}>
-        {r.google_maps_url && <a href={r.google_maps_url} target="_blank" rel="noreferrer">Google Maps →</a>}
-        {r.website && <a href={r.website} target="_blank" rel="noreferrer">Website →</a>}
-      </div>
-
-      {/* ── Tabs ── */}
-      <TabBar tabs={tabs} active={tab} onChange={setTab} />
-
-      {/* ══════════════════ OVERVIEW TAB ══════════════════ */}
-      {tab === 'Overview' && (
+      {/* ═══ AREA OVERVIEW ═══ */}
+      {(am || r.radar_data.length > 0) && (
         <>
-          {/* Pricing Power Engine */}
-          {pp && (
-            <div style={{ marginBottom: 24, padding: '16px 20px', borderRadius: 14, background: pp.confirmed ? 'rgba(34,197,94,0.06)' : 'rgba(248,113,113,0.06)', border: `1.5px solid ${pp.confirmed ? 'rgba(34,197,94,0.3)' : 'rgba(248,113,113,0.25)'}` }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-                <span style={{ fontSize: '1.4rem' }}>{pp.confirmed ? '✅' : '❌'}</span>
-                <div>
-                  <div style={{ fontWeight: 800, fontSize: '1rem', color: pp.confirmed ? '#4ade80' : '#f87171' }}>
-                    {pp.confirmed ? 'Confirmed Pricing Power' : 'No Pricing Power Confirmed'}
-                  </div>
-                  <div style={{ fontSize: '0.78rem', color: '#475569' }}>
-                    {pp.confirmed ? 'Strong economic moat — safe margin expansion opportunity' : 'Insufficient moat for margin expansion'}
-                  </div>
-                </div>
-              </div>
-              <div className="result-row" style={{ marginBottom: 12 }}>
-                <Kv k="Price Premium Index" v={<span style={{ color: pp.price_premium_index != null && pp.price_premium_index > 1 ? '#4ade80' : '#f87171', fontWeight: 700 }}>{pp.price_premium_index ?? '—'}x</span>} />
-                <Kv k="Rating Premium" v={<span style={{ color: pp.rating_premium != null && pp.rating_premium >= 0 ? '#4ade80' : '#f87171', fontWeight: 700 }}>{pp.rating_premium != null ? (pp.rating_premium >= 0 ? `+${pp.rating_premium}` : pp.rating_premium) : '—'}</span>} />
-                <Kv k="Local Demand Share" v={<span style={{ fontWeight: 700 }}>{pp.local_demand_share_pct != null ? `${pp.local_demand_share_pct}%` : '—'}</span>} />
-                <Kv k="Neg. Price Sentiment" v={<span style={{ color: pp.neg_price_sentiment_ratio != null && pp.neg_price_sentiment_ratio < 0.05 ? '#4ade80' : '#f87171', fontWeight: 700 }}>{pp.neg_price_sentiment_ratio != null ? `${(pp.neg_price_sentiment_ratio * 100).toFixed(1)}%` : '—'}</span>} />
-              </div>
-              {pp.factors_met.length > 0 && <div style={{ marginBottom: 6 }}>{pp.factors_met.map((f, i) => <div key={i} style={{ fontSize: '0.8rem', color: '#4ade80', lineHeight: 1.6 }}>✓ {f}</div>)}</div>}
-              {pp.factors_missing.length > 0 && <div>{pp.factors_missing.map((f, i) => <div key={i} style={{ fontSize: '0.8rem', color: '#f87171', lineHeight: 1.6 }}>✗ {f}</div>)}</div>}
+          <SectionLabel>Area Overview — 500m–1km radius</SectionLabel>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(140px, 170px) 1fr', gap: 16, alignItems: 'center', marginBottom: 14 }}>
+            {am && <AQIGauge index={am.quality_index} />}
+            {r.radar_data.length > 0 && <CompetitorRadar data={r.radar_data} />}
+          </div>
+          {am && (
+            <DataGrid>
+              {am.avg_rating_area != null && <DataCell label="Area Avg Rating" value={`★ ${am.avg_rating_area}`} />}
+              {am.avg_price_level_area != null && <DataCell label="Area Avg Price" value={`€ × ${am.avg_price_level_area}`} />}
+              {am.operational_pct != null && <DataCell label="Operational %" value={`${am.operational_pct}%`} />}
+              <DataCell label="Businesses (1km)" value={am.businesses_count} />
+              <DataCell label="Total Area Reviews" value={am.total_area_reviews.toLocaleString('de-DE')} />
+            </DataGrid>
+          )}
+          <Divider />
+        </>
+      )}
+
+      {/* ═══ CONTACT & ADDRESS ═══ */}
+      <SectionLabel>Contact & Location</SectionLabel>
+      <DataGrid>
+        {r.address && <DataCell label="Address" value={<CopyBtn value={r.address} />} />}
+        {r.phone && <DataCell label="Phone" value={<CopyBtn value={r.phone} />} />}
+        {r.phone_intl && r.phone_intl !== r.phone && <DataCell label="Intl." value={<CopyBtn value={r.phone_intl} />} />}
+        {coords && <DataCell label="Coordinates" value={<CopyBtn value={coords} />} />}
+        {r.plus_code && <DataCell label="Plus Code" value={<CopyBtn value={r.plus_code} />} />}
+        {ad.postal_code && <DataCell label="PLZ" value={ad.postal_code} />}
+        {ad.landkreis && <DataCell label="Landkreis" value={ad.landkreis} />}
+        {ad.bundesland && <DataCell label="Bundesland" value={ad.bundesland} />}
+        {ad.country && <DataCell label="Country" value={`${ad.country}${ad.country_code ? ` (${ad.country_code})` : ''}`} />}
+      </DataGrid>
+      <Divider />
+
+      {/* ═══ LOCATION ECONOMICS ═══ */}
+      {sc && (
+        <>
+          <SectionLabel>Location Economics</SectionLabel>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 10, marginBottom: 14 }}>
+            <div className="data-cell" style={{ gridColumn: 'span 1' }}>
+              <div className="data-cell-label">Zone</div>
+              <div style={{ marginTop: 4 }}><ZoneBadge zone={sc.zone_classification} /></div>
+            </div>
+            {sc.nearest_transport && (
+              <DataCell label={`${sc.nearest_transport.type} (nearest)`} value={`${sc.nearest_transport.name} — ${sc.nearest_transport.distance_m}m · ${sc.nearest_transport.walking_min} min`} />
+            )}
+            {sc.city_center_distance_m != null && (
+              <DataCell label="Distance to City Center" value={`${sc.city_center_distance_m.toLocaleString()}m`} />
+            )}
+            <div className="data-cell">
+              <div className="data-cell-label">Foot Traffic Score</div>
+              <div style={{ marginTop: 6 }}><FootTrafficBar score={sc.foot_traffic_score} /></div>
+            </div>
+          </div>
+          <ProseBlock text={sc.location_economics} />
+          {/* Task 4: Abstract spatial map */}
+          {r.latitude != null && r.longitude != null && r.points_of_interest.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <AbstractSpatialMap sc={sc} pois={r.points_of_interest} r={{ latitude: r.latitude!, longitude: r.longitude! }} />
             </div>
           )}
+          <Divider />
+        </>
+      )}
 
-          {/* Area Overview */}
-          {(am || r.radar_data.length > 0) && (
-            <Sec title="Area Overview (500m–1km radius)">
-              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(160px, 200px) 1fr', gap: 20, alignItems: 'center', marginBottom: 14 }}>
-                {am && <QualityGauge index={am.quality_index} />}
-                {r.radar_data.length > 0 && <CompetitorRadar data={r.radar_data} />}
-              </div>
-              {am && (
-                <div className="result-row">
-                  {am.avg_rating_area != null && <Kv k="Area Avg Rating" v={`★ ${am.avg_rating_area}`} />}
-                  {am.avg_price_level_area != null && <Kv k="Area Avg Price" v={`€ × ${am.avg_price_level_area}`} />}
-                  {am.operational_pct != null && <Kv k="Operational" v={`${am.operational_pct}%`} />}
-                  <Kv k="Businesses" v={am.businesses_count} />
-                  <Kv k="Total Area Reviews" v={am.total_area_reviews.toLocaleString('de-DE')} />
+      {/* ═══ OPENING HOURS ═══ */}
+      {r.opening_hours && (
+        <>
+          <SectionLabel>Opening Hours</SectionLabel>
+          <DataGrid style={{ marginBottom: 10 }}>
+            {r.opening_hours.total_weekly_hours != null && <DataCell label="Weekly Total" value={`${r.opening_hours.total_weekly_hours}h`} />}
+            {r.opening_hours.avg_daily_hours != null && <DataCell label="Avg / Day" value={`${r.opening_hours.avg_daily_hours}h`} />}
+            <DataCell label="Weekends" value={<span style={{ color: r.opening_hours.open_on_weekends ? '#4ade80' : '#f87171' }}>{r.opening_hours.open_on_weekends ? 'Open' : 'Closed'}</span>} />
+          </DataGrid>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 2 }}>
+            {r.opening_hours.weekday_text.map((line, i) => {
+              const idx = line.indexOf(': ');
+              return (
+                <div key={i} style={{ display: 'flex', gap: 10, fontSize: '0.8rem', lineHeight: 1.7 }}>
+                  <span style={{ color: '#444444', minWidth: 90 }}>{idx > -1 ? line.slice(0, idx) : line}</span>
+                  <span style={{ color: '#666666' }}>{idx > -1 ? line.slice(idx + 2) : ''}</span>
                 </div>
-              )}
-            </Sec>
-          )}
+              );
+            })}
+          </div>
+          <Divider />
+        </>
+      )}
 
-          {/* Contact */}
-          <Sec title="Contact">
-            <div className="result-row">
-              {r.address && <div className="result-item"><strong>Address</strong><CopyBtn value={r.address} /></div>}
-              {r.phone && <div className="result-item"><strong>Phone</strong><CopyBtn value={r.phone} /></div>}
-              {r.phone_intl && r.phone_intl !== r.phone && <div className="result-item"><strong>Intl.</strong><CopyBtn value={r.phone_intl} /></div>}
-              {coords && <div className="result-item"><strong>Coordinates</strong><CopyBtn value={coords} /></div>}
-              {r.plus_code && <div className="result-item"><strong>Plus Code</strong><CopyBtn value={r.plus_code} /></div>}
+      {/* ═══ SERVICES ═══ */}
+      {services.length > 0 && (
+        <>
+          <SectionLabel>Services & Attributes</SectionLabel>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 4 }}>
+            {services.map(s => (
+              <span key={s.label} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 20, fontSize: '0.75rem', fontWeight: 600, background: s.v ? 'rgba(34,197,94,0.08)' : 'rgba(248,113,113,0.06)', color: s.v ? '#4ade80' : '#f87171', border: `1px solid ${s.v ? 'rgba(34,197,94,0.18)' : 'rgba(248,113,113,0.12)'}` }}>
+                {s.v ? '✓' : '✗'} {s.label}
+              </span>
+            ))}
+          </div>
+          <Divider />
+        </>
+      )}
+
+      {/* ═══ WEBSITE INTELLIGENCE ═══ */}
+      {wd && (wd.meta_description || wd.emails.length > 0 || Object.keys(wd.socials).length > 0) && (
+        <>
+          <SectionLabel>Website Intelligence</SectionLabel>
+          {wd.page_title && <div style={{ fontSize: '0.82rem', color: '#888888', marginBottom: 6, fontStyle: 'italic' }}>"{wd.page_title}"</div>}
+          {wd.meta_description && <p style={{ margin: '0 0 12px', fontSize: '0.81rem', color: '#666666', lineHeight: 1.55 }}>{wd.meta_description}</p>}
+          <DataGrid style={{ marginBottom: 10 }}>
+            {wd.emails.length > 0 && <DataCell label="Emails" value={<div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>{wd.emails.map((e, i) => <CopyBtn key={i} value={e} />)}</div>} />}
+            {wd.phones_found.length > 0 && <DataCell label="Phones (site)" value={<div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>{wd.phones_found.map((p, i) => <CopyBtn key={i} value={p} />)}</div>} />}
+          </DataGrid>
+          {Object.keys(wd.socials).length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+              {Object.entries(wd.socials).map(([platform, url]) => (
+                <a key={platform} href={url} target="_blank" rel="noreferrer"
+                  style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 12px', borderRadius: 20, background: 'rgba(78,154,102,0.07)', border: '1px solid rgba(78,154,102,0.18)', fontSize: '0.77rem', textDecoration: 'none', color: '#4e9a66' }}>
+                  {socialIcons[platform] ?? '🔗'} {platform}
+                </a>
+              ))}
             </div>
-          </Sec>
-
-          {/* Address detail */}
-          {(ad.bundesland || ad.landkreis || ad.postal_code) && (
-            <Sec title="Address Detail">
-              <div className="result-row">
-                {ad.street && <Kv k="Street" v={ad.street_number ? `${ad.street} ${ad.street_number}` : ad.street} />}
-                {ad.sublocality && <Kv k="District" v={ad.sublocality} />}
-                {ad.city && <Kv k="City" v={ad.city} />}
-                {ad.postal_code && <Kv k="PLZ" v={ad.postal_code} />}
-                {ad.landkreis && <Kv k="Landkreis" v={ad.landkreis} />}
-                {ad.bundesland && <Kv k="Bundesland" v={ad.bundesland} />}
-                {ad.country && <Kv k="Country" v={`${ad.country}${ad.country_code ? ` (${ad.country_code})` : ''}`} />}
-              </div>
-            </Sec>
           )}
+          <Divider />
+        </>
+      )}
 
-          {/* Website intelligence */}
-          {wd && (wd.meta_description || wd.emails.length > 0 || Object.keys(wd.socials).length > 0) && (
-            <Sec title="Website Intelligence">
-              {wd.page_title && <div style={{ fontSize: '0.85rem', color: '#94a3b8', marginBottom: 8, fontStyle: 'italic' }}>"{wd.page_title}"</div>}
-              {wd.meta_description && <div style={{ fontSize: '0.83rem', color: '#64748b', marginBottom: 10, lineHeight: 1.55 }}>{wd.meta_description}</div>}
-              <div className="result-row" style={{ marginBottom: 10 }}>
-                {wd.emails.length > 0 && <div className="result-item"><strong>Emails</strong><div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>{wd.emails.map((e, i) => <CopyBtn key={i} value={e} />)}</div></div>}
-                {wd.phones_found.length > 0 && <div className="result-item"><strong>Phones (site)</strong><div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>{wd.phones_found.map((p, i) => <CopyBtn key={i} value={p} />)}</div></div>}
-              </div>
-              {Object.keys(wd.socials).length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: wd.keywords.length ? 10 : 0 }}>
-                  {Object.entries(wd.socials).map(([platform, url]) => (
-                    <a key={platform} href={url} target="_blank" rel="noreferrer"
-                      style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 12px', borderRadius: 20, background: 'rgba(56,189,248,0.08)', border: '1px solid rgba(56,189,248,0.2)', fontSize: '0.79rem', textDecoration: 'none', color: '#38bdf8' }}>
-                      {socialIcons[platform] ?? '🔗'} {platform}
-                    </a>
-                  ))}
-                </div>
-              )}
-              {wd.keywords.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                  {wd.keywords.map((kw, i) => <span key={i} style={{ padding: '2px 8px', borderRadius: 12, background: 'rgba(148,163,184,0.07)', color: '#475569', fontSize: '0.76rem', border: '1px solid rgba(148,163,184,0.1)' }}>{kw}</span>)}
-                </div>
-              )}
-            </Sec>
-          )}
-
-          {/* Opening hours */}
-          {r.opening_hours && (
-            <Sec title="Opening Hours">
-              <div className="result-row" style={{ marginBottom: 10 }}>
-                {r.opening_hours.total_weekly_hours != null && <Kv k="Weekly Total" v={`${r.opening_hours.total_weekly_hours}h`} />}
-                {r.opening_hours.avg_daily_hours != null && <Kv k="Avg / Day" v={`${r.opening_hours.avg_daily_hours}h`} />}
-                <Kv k="Weekends" v={<span style={{ color: r.opening_hours.open_on_weekends ? '#4ade80' : '#f87171' }}>{r.opening_hours.open_on_weekends ? 'Open' : 'Closed'}</span>} />
-              </div>
-              {r.opening_hours.weekday_text.map((line, i) => {
-                const idx = line.indexOf(': ');
-                return (
-                  <div key={i} style={{ display: 'flex', gap: 10, fontSize: '0.82rem', lineHeight: 1.7 }}>
-                    <span style={{ color: '#475569', minWidth: 96 }}>{idx > -1 ? line.slice(0, idx) : line}</span>
-                    <span style={{ color: '#94a3b8' }}>{idx > -1 ? line.slice(idx + 2) : ''}</span>
-                  </div>
-                );
-              })}
-            </Sec>
-          )}
-
-          {/* Services */}
-          {services.length > 0 && (
-            <Sec title="Services & Features">
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {services.map(s => <Badge key={s.label} label={s.label} value={s.value} />)}
-              </div>
-            </Sec>
-          )}
-
-          {/* Sentiment */}
-          {sk && (sk.praises.length > 0 || sk.complaints.length > 0) && (
-            <Sec title="Qualitative Analysis — Review Sentiment">
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                <div>
-                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#4ade80', marginBottom: 8 }}>PRAISES</div>
-                  {sk.praises.length > 0 ? sk.praises.map((t, i) => (
-                    <div key={i} style={{ marginBottom: 10 }}>
-                      <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#94a3b8', marginBottom: 3 }}>{t.theme} <span style={{ color: '#4ade80', fontWeight: 400 }}>({t.count}×)</span></div>
-                      {t.examples.map((ex, j) => <div key={j} style={{ fontSize: '0.77rem', color: '#475569', lineHeight: 1.45, marginBottom: 2, paddingLeft: 8, borderLeft: '2px solid rgba(34,197,94,0.3)' }}>"{ex}"</div>)}
-                    </div>
-                  )) : <div style={{ fontSize: '0.8rem', color: '#334155' }}>No praises detected</div>}
-                </div>
-                <div>
-                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#f87171', marginBottom: 8 }}>COMPLAINTS</div>
-                  {sk.complaints.length > 0 ? sk.complaints.map((t, i) => (
-                    <div key={i} style={{ marginBottom: 10 }}>
-                      <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#94a3b8', marginBottom: 3 }}>{t.theme} <span style={{ color: '#f87171', fontWeight: 400 }}>({t.count}×)</span></div>
-                      {t.examples.map((ex, j) => <div key={j} style={{ fontSize: '0.77rem', color: '#475569', lineHeight: 1.45, marginBottom: 2, paddingLeft: 8, borderLeft: '2px solid rgba(248,113,113,0.3)' }}>"{ex}"</div>)}
-                    </div>
-                  )) : <div style={{ fontSize: '0.8rem', color: '#334155' }}>No complaints detected</div>}
-                </div>
-              </div>
-            </Sec>
-          )}
-
-          {/* Review analysis */}
-          {ra && ra.total > 0 && (
-            <Sec title={`Review Analysis — ${ra.total} sample reviews`}>
-              <div className="result-row" style={{ marginBottom: 12 }}>
-                <Kv k="Sentiment" v={<span style={{ color: ra.sentiment_score != null && ra.sentiment_score > 0 ? '#4ade80' : '#f87171', fontWeight: 700 }}>{ra.sentiment_score != null ? (ra.sentiment_score > 0 ? `+${ra.sentiment_score}` : String(ra.sentiment_score)) : '—'}</span>} />
-                <Kv k="Pos / Neg / Neutral" v={<><span style={{ color: '#4ade80' }}>{ra.positive}↑</span>{' / '}<span style={{ color: '#f87171' }}>{ra.negative}↓</span>{' / '}<span style={{ color: '#64748b' }}>{ra.neutral}→</span></>} />
-                {ra.avg_review_length > 0 && <Kv k="Avg Length" v={`${ra.avg_review_length} chars`} />}
-                {ra.tourist_ratio_pct != null && <Kv k="Tourist Reviews" v={`${ra.tourist_ratio_pct}%`} />}
-                {ra.languages.length > 0 && <Kv k="Languages" v={ra.languages.join(', ')} />}
-                {ra.oldest_date && <Kv k="Date Range" v={<span style={{ fontSize: '0.8rem' }}>{ra.oldest_date} → {ra.newest_date}</span>} />}
-              </div>
-              <div style={{ display: 'grid', gap: 8 }}>
-                {r.reviews.map((rv, i) => (
-                  <div key={i} style={{ background: '#0b1122', border: '1px solid rgba(148,163,184,0.1)', borderRadius: 10, padding: '10px 14px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, flexWrap: 'wrap', gap: 4 }}>
-                      <span style={{ fontWeight: 600, fontSize: '0.82rem' }}>{rv.author || 'Anonymous'}</span>
-                      <div style={{ display: 'flex', gap: 8, fontSize: '0.79rem', color: '#475569' }}>
-                        {rv.rating != null && <span style={{ color: '#fbbf24' }}>{'★'.repeat(rv.rating)}{'☆'.repeat(5 - rv.rating)}</span>}
-                        {rv.relative_time && <span>{rv.relative_time}</span>}
-                        {rv.language && rv.language !== 'de' && <span style={{ color: '#38bdf8' }}>[{rv.language}]</span>}
-                      </div>
-                    </div>
-                    {rv.text && <p style={{ margin: 0, fontSize: '0.82rem', color: '#94a3b8', lineHeight: 1.55 }}>{rv.text}</p>}
-                  </div>
-                ))}
-              </div>
-            </Sec>
-          )}
-
-          {/* Foot Traffic Drivers */}
-          {r.points_of_interest.length > 0 && (
-            <Sec title={`Local Demand Drivers — ${r.points_of_interest.length} nearby venues`}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8 }}>
-                {r.points_of_interest.map((poi) => {
-                  const catColor: Record<string, string> = { tourism: '#38bdf8', amenity: '#a78bfa', historic: '#fbbf24', leisure: '#4ade80' };
-                  return (
-                    <div key={poi.id} style={{ background: '#0b1122', border: '1px solid rgba(148,163,184,0.1)', borderRadius: 10, padding: '10px 14px' }}>
-                      <div style={{ fontWeight: 600, fontSize: '0.83rem', marginBottom: 3 }}>{poi.name}</div>
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <span style={{ fontSize: '0.73rem', padding: '2px 7px', borderRadius: 10, background: `${catColor[poi.category] ?? '#64748b'}18`, color: catColor[poi.category] ?? '#64748b', border: `1px solid ${catColor[poi.category] ?? '#64748b'}30` }}>{poi.category}</span>
-                        <span style={{ fontSize: '0.73rem', color: '#475569' }}>{poi.subtype}</span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </Sec>
-          )}
-
-          {/* Photos */}
-          {r.photos.length > 0 && (
-            <Sec title={`Photos — ${r.photos_count} total`}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 8 }}>
-                {r.photos.map((url, i) => (
-                  <a key={i} href={url} target="_blank" rel="noreferrer">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={url} alt={`Photo ${i + 1}`} loading="lazy"
-                      style={{ width: '100%', height: 108, objectFit: 'cover', borderRadius: 10, border: '1px solid rgba(148,163,184,0.12)', display: 'block' }}
-                      onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                  </a>
-                ))}
-              </div>
-            </Sec>
-          )}
-
-          {/* Competitors */}
-          {r.competitors.length > 0 && (
-            <Sec title={`Nearby Competitors — ${r.competitors.length} within 1km`}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
-                {r.competitors.map((c, ci) => (
-                  <div key={ci} style={{ background: '#0b1122', border: '1px solid rgba(148,163,184,0.12)', borderRadius: 12, padding: '12px 14px' }}>
-                    <div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: 5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
-                    <div style={{ display: 'flex', gap: 8, fontSize: '0.78rem', flexWrap: 'wrap', marginBottom: 5 }}>
-                      {c.rating && <span style={{ color: '#fbbf24' }}>★ {c.rating}</span>}
-                      {c.review_volume && <span style={{ color: '#475569' }}>{Number(c.review_volume).toLocaleString('de-DE')} rev.</span>}
-                      {c.price_level && <span style={{ color: '#fbbf24' }}>{c.price_level}</span>}
-                      {c.business_status && c.business_status !== 'OPERATIONAL' && <span style={{ color: '#facc15', fontSize: '0.73rem' }}>{c.business_status.replace(/_/g, ' ')}</span>}
-                    </div>
-                    {c.phone && <div style={{ fontSize: '0.77rem', color: '#475569', marginBottom: 4 }}>{c.phone}</div>}
-                    {c.address && <div style={{ fontSize: '0.75rem', color: '#334155', marginBottom: 6, lineHeight: 1.4 }}>{c.address}</div>}
-                    {c.url && <a href={c.url} target="_blank" rel="noreferrer" style={{ fontSize: '0.78rem' }}>Website →</a>}
-                  </div>
-                ))}
-              </div>
-            </Sec>
-          )}
-
-          {/* Industry Economics */}
-          {eco && (
-            <Sec title={`Industry Economics — ${eco.industry_label}`}>
-              <div className="result-row" style={{ marginBottom: 12 }}>
-                <Kv k="EBITDA Multiple" v={`${eco.ebitda_multiple.low}x – ${eco.ebitda_multiple.mid}x – ${eco.ebitda_multiple.high}x`} />
-                {eco.avg_margin_pct != null && <Kv k="Avg EBITDA Margin" v={`${eco.avg_margin_pct}%`} />}
-                {eco.market_size_de_bn != null && <Kv k="Market (DE)" v={`${eco.market_size_de_bn} Mrd. €`} />}
-                {eco.cagr_5y_pct != null && <Kv k="5Y CAGR" v={`${eco.cagr_5y_pct}%`} />}
-              </div>
-              <p style={{ margin: '0 0 12px', fontSize: '0.83rem', color: '#64748b', lineHeight: 1.55 }}>{eco.trend_summary}</p>
-              {eco.yearly.map((y, i) => (
-                <div key={i} style={{ display: 'flex', gap: 12, fontSize: '0.8rem', lineHeight: 1.6 }}>
-                  <span style={{ color: '#38bdf8', fontWeight: 700, minWidth: 36 }}>{y.year}</span>
-                  <span style={{ color: '#475569' }}>{y.context}</span>
+      {/* ═══ SENTIMENT ═══ */}
+      {sk && (sk.praises.length > 0 || sk.complaints.length > 0) && (
+        <>
+          <SectionLabel>Review Sentiment Analysis</SectionLabel>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div>
+              <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#4ade80', letterSpacing: '0.07em', marginBottom: 8 }}>PRAISES</div>
+              {sk.praises.map((t, i) => (
+                <div key={i} style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#94a3b8', marginBottom: 3 }}>{t.theme} <span style={{ color: '#4ade80', fontWeight: 400 }}>({t.count}×)</span></div>
+                  {t.examples.map((ex, j) => <div key={j} style={{ fontSize: '0.75rem', color: '#444444', lineHeight: 1.5, marginBottom: 2, paddingLeft: 8, borderLeft: '2px solid rgba(34,197,94,0.25)' }}>"{ex}"</div>)}
                 </div>
               ))}
-            </Sec>
-          )}
+              {sk.praises.length === 0 && <div style={{ fontSize: '0.78rem', color: '#444444' }}>No praises detected</div>}
+            </div>
+            <div>
+              <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#f87171', letterSpacing: '0.07em', marginBottom: 8 }}>COMPLAINTS</div>
+              {sk.complaints.map((t, i) => (
+                <div key={i} style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#94a3b8', marginBottom: 3 }}>{t.theme} <span style={{ color: '#f87171', fontWeight: 400 }}>({t.count}×)</span></div>
+                  {t.examples.map((ex, j) => <div key={j} style={{ fontSize: '0.75rem', color: '#444444', lineHeight: 1.5, marginBottom: 2, paddingLeft: 8, borderLeft: '2px solid rgba(248,113,113,0.25)' }}>"{ex}"</div>)}
+                </div>
+              ))}
+              {sk.complaints.length === 0 && <div style={{ fontSize: '0.78rem', color: '#444444' }}>No complaints detected</div>}
+            </div>
+          </div>
+          <Divider />
         </>
       )}
 
-      {/* ══════════════════ FINANCIALS TAB ══════════════════ */}
-      {tab === 'Financials' && (
+      {/* ═══ REVIEW ANALYSIS ═══ */}
+      {ra && ra.total > 0 && (
         <>
-          {pl ? (
-            <>
-              {/* P&L model meta */}
-              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 20 }}>
-                {[
-                  { k: 'Est. Age', v: `${pl.estimated_age_years}y` },
-                  { k: 'FTE', v: pl.fte_estimate.toString() },
-                  { k: 'Avg Basket', v: `€${pl.adjusted_basket_eur.toFixed(0)}` },
-                  { k: 'Annual Txns', v: pl.annual_transactions.toLocaleString('de-DE') },
-                  { k: 'Capture Rate', v: `${pl.review_capture_rate_pct}%` },
-                ].map(({ k, v }) => (
-                  <div key={k} style={{ padding: '8px 14px', borderRadius: 10, background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.12)' }}>
-                    <div style={{ fontSize: '0.72rem', color: '#475569', marginBottom: 2 }}>{k}</div>
-                    <div style={{ fontSize: '0.92rem', fontWeight: 700, color: '#94a3b8' }}>{v}</div>
+          <SectionLabel>Review Analysis — {ra.total} sampled</SectionLabel>
+          <DataGrid style={{ marginBottom: 12 }}>
+            <DataCell label="Sentiment Score" value={<span style={{ color: ra.sentiment_score != null && ra.sentiment_score > 0 ? '#4ade80' : '#f87171', fontWeight: 700 }}>{ra.sentiment_score != null ? (ra.sentiment_score > 0 ? `+${ra.sentiment_score}` : String(ra.sentiment_score)) : '—'}</span>} />
+            <DataCell label="Pos / Neg / Neutral" value={<><span style={{ color: '#4ade80' }}>{ra.positive}↑</span>{' / '}<span style={{ color: '#f87171' }}>{ra.negative}↓</span>{' / '}<span style={{ color: '#666666' }}>{ra.neutral}→</span></>} />
+            {ra.avg_review_length > 0 && <DataCell label="Avg Length" value={`${ra.avg_review_length} chars`} />}
+            {ra.tourist_ratio_pct != null && <DataCell label="Tourist Reviews" value={`${ra.tourist_ratio_pct}%`} />}
+            {ra.languages.length > 0 && <DataCell label="Languages" value={ra.languages.join(', ')} />}
+            {ra.oldest_date && <DataCell label="Date Range" value={`${ra.oldest_date} → ${ra.newest_date}`} />}
+          </DataGrid>
+          <div style={{ display: 'grid', gap: 6 }}>
+            {r.reviews.map((rv, i) => (
+              <div key={i} style={{ background: '#161616', border: '1px solid rgba(148,163,184,0.08)', borderRadius: 8, padding: '9px 12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, flexWrap: 'wrap', gap: 4 }}>
+                  <span style={{ fontWeight: 600, fontSize: '0.8rem', color: '#888888' }}>{rv.author || 'Anonymous'}</span>
+                  <div style={{ display: 'flex', gap: 8, fontSize: '0.77rem', color: '#444444' }}>
+                    {rv.rating != null && <span style={{ color: '#fbbf24' }}>{'★'.repeat(rv.rating)}{'☆'.repeat(5 - rv.rating)}</span>}
+                    {rv.relative_time && <span>{rv.relative_time}</span>}
+                    {rv.language && rv.language !== 'de' && <span style={{ color: '#4e9a66' }}>[{rv.language}]</span>}
                   </div>
-                ))}
+                </div>
+                {rv.text && <p style={{ margin: 0, fontSize: '0.8rem', color: '#666666', lineHeight: 1.55 }}>{rv.text}</p>}
               </div>
-
-              <Sec title="Synthetic P&L Statement">
-                <PLTable pl={pl} />
-              </Sec>
-
-              <Sec title="EBITDA vs Sector Average">
-                <EbitdaBenchmarkChart pl={pl} />
-                {pl.revenue_per_employee != null && (
-                  <div className="result-row" style={{ marginTop: 14 }}>
-                    <Kv k="Revenue / Employee" v={fmtEur(pl.revenue_per_employee)} />
-                    {pl.rent_as_revenue_pct != null && <Kv k="Rent / Revenue" v={`${pl.rent_as_revenue_pct.toFixed(1)}%`} />}
-                    {pl.personnel_as_revenue_pct != null && <Kv k="Personnel / Revenue" v={`${pl.personnel_as_revenue_pct.toFixed(1)}%`} />}
-                  </div>
-                )}
-              </Sec>
-
-              <RiskMatrix pl={pl} />
-            </>
-          ) : (
-            <div style={{ color: '#475569', fontSize: '0.85rem', padding: '20px 0' }}>No P&L data available for this business type.</div>
-          )}
+            ))}
+          </div>
+          <Divider />
         </>
       )}
 
-      {/* ══════════════════ MACRO TAB ══════════════════ */}
-      {tab === 'Macro' && (
+      {/* ═══ FOOT TRAFFIC DRIVERS ═══ */}
+      {r.points_of_interest.length > 0 && (
         <>
-          {(md && lf) ? (
-            <>
-              <Sec title="Labor Friction Index">
-                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(160px, 200px) 1fr', gap: 20, alignItems: 'center' }}>
-                  <LaborFrictionGauge lf={lf} />
-                  <div>
-                    <div style={{ fontSize: '0.83rem', color: '#94a3b8', marginBottom: 10, lineHeight: 1.55 }}>{lf.interpretation}</div>
-                    <div className="result-row">
-                      <Kv k="Local Unemployment" v={<span style={{ color: lf.unemployment_pct > lf.national_avg_unemployment ? '#f87171' : '#4ade80', fontWeight: 700 }}>{lf.unemployment_pct}%</span>} />
-                      <Kv k="National Avg" v={`${lf.national_avg_unemployment}%`} />
-                      <Kv k="Wage Pressure" v={<span style={{ color: lf.wage_pressure_flag ? '#fbbf24' : '#4ade80' }}>{lf.wage_pressure_flag ? 'Elevated' : 'Normal'}</span>} />
-                    </div>
+          <SectionLabel>Demand Drivers — {r.points_of_interest.length} nearby venues</SectionLabel>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 6 }}>
+            {r.points_of_interest.map((poi) => {
+              const catColor: Record<string, string> = { tourism: '#4e9a66', amenity: '#a78bfa', historic: '#fbbf24', leisure: '#4ade80' };
+              const c = catColor[poi.category] ?? '#888888';
+              return (
+                <div key={poi.id} style={{ background: '#161616', border: '1px solid rgba(148,163,184,0.08)', borderRadius: 8, padding: '9px 12px' }}>
+                  <div style={{ fontWeight: 600, fontSize: '0.8rem', color: '#888888', marginBottom: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{poi.name}</div>
+                  <div style={{ display: 'flex', gap: 5 }}>
+                    <span style={{ fontSize: '0.7rem', padding: '1px 6px', borderRadius: 8, background: `${c}15`, color: c, border: `1px solid ${c}28` }}>{poi.category}</span>
+                    <span style={{ fontSize: '0.7rem', color: '#444444' }}>{poi.subtype}</span>
                   </div>
                 </div>
-              </Sec>
-
-              <Sec title="Regional Macroeconomics">
-                <div className="result-row" style={{ marginBottom: 16 }}>
-                  {md.bundesland && <Kv k="Bundesland" v={md.bundesland} />}
-                  {md.city && <Kv k="City" v={md.city} />}
-                  <Kv k="Median Gross Wage" v={`€${md.median_gross_wage.toLocaleString('de-DE')} p.a.`} />
-                  <Kv k="Commercial Rent" v={`€${md.commercial_rent_per_sqm}/m²/mo`} />
-                  <Kv k="Data Source" v={<span style={{ fontSize: '0.76rem', color: '#334155' }}>{md.data_source}</span>} />
-                </div>
-              </Sec>
-
-              <Sec title="Purchasing Power vs National Average">
-                <PPPBarChart macro={md} />
-                <div style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <span style={{ fontSize: '2rem', fontWeight: 800, color: md.ppp_index >= 100 ? '#4ade80' : '#f87171' }}>{md.ppp_index.toFixed(1)}</span>
-                  <div>
-                    <div style={{ fontSize: '0.82rem', color: '#94a3b8' }}>PPP Index (100 = national avg)</div>
-                    <div style={{ fontSize: '0.78rem', color: '#475569' }}>{md.ppp_index >= 110 ? 'High-purchasing-power location — premium pricing viable' : md.ppp_index >= 95 ? 'Near-average purchasing power' : 'Below-average — price sensitivity risk'}</div>
-                  </div>
-                </div>
-              </Sec>
-            </>
-          ) : (
-            <div style={{ color: '#475569', fontSize: '0.85rem', padding: '20px 0' }}>Macro data not available — requires Bundesland-level address data.</div>
-          )}
+              );
+            })}
+          </div>
+          <Divider />
         </>
       )}
 
-      {/* ══════════════════ MARKET TAB ══════════════════ */}
-      {tab === 'Market' && (
+      {/* ═══ PHOTOS ═══ */}
+      {r.photos.length > 0 && (
         <>
-          {mt.length > 0 ? (
-            <>
-              <Sec title="Market Dynamics & Review Activity (2020–2024)">
-                <MarketTimelineChart points={mt} />
-                <div style={{ marginTop: 12, fontSize: '0.78rem', color: '#334155', lineHeight: 1.55 }}>
-                  <strong style={{ color: '#38bdf8' }}>Market Index:</strong> Synthetic demand index combining COVID recovery trajectory, seasonal patterns, and industry-specific market cycles for Germany 2020–2024. <strong style={{ color: '#fbbf24' }}>Review Activity:</strong> Normalized quarterly review volume from actual review timestamps, anchored to real data where available.
-                </div>
-              </Sec>
+          <SectionLabel>Photos — {r.photos_count} total</SectionLabel>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 6, marginBottom: 4 }}>
+            {r.photos.map((url, i) => (
+              <a key={i} href={url} target="_blank" rel="noreferrer">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={url} alt={`Photo ${i + 1}`} loading="lazy"
+                  style={{ width: '100%', height: 90, objectFit: 'cover', borderRadius: 6, border: '1px solid rgba(148,163,184,0.08)', display: 'block' }}
+                  onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+              </a>
+            ))}
+          </div>
+          <Divider />
+        </>
+      )}
 
-              <Sec title="Key Periods">
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 8 }}>
-                  {[
-                    { period: 'Q1 2020', label: 'Pre-COVID peak', color: '#38bdf8' },
-                    { period: 'Q2 2020', label: 'Lockdown trough', color: '#f87171' },
-                    { period: 'Q3 2021', label: 'Reopening bounce', color: '#fbbf24' },
-                    { period: 'Q4 2022', label: 'Energy crisis pressure', color: '#f87171' },
-                    { period: 'Q2 2023', label: 'Stabilisation', color: '#4ade80' },
-                    { period: 'Q4 2024', label: 'New steady state', color: '#38bdf8' },
-                  ].map(({ period, label, color }) => (
-                    <div key={period} style={{ padding: '10px 12px', borderRadius: 10, background: 'rgba(148,163,184,0.04)', border: '1px solid rgba(148,163,184,0.1)' }}>
-                      <div style={{ fontSize: '0.78rem', fontWeight: 700, color, marginBottom: 3 }}>{period}</div>
-                      <div style={{ fontSize: '0.77rem', color: '#475569' }}>{label}</div>
-                    </div>
-                  ))}
+      {/* ═══ COMPETITORS ═══ */}
+      {r.competitors.length > 0 && (
+        <>
+          <SectionLabel>Competitors — {r.competitors.length} within 1km</SectionLabel>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 8 }}>
+            {r.competitors.map((c, ci) => (
+              <div key={ci} style={{ background: '#161616', border: '1px solid rgba(148,163,184,0.08)', borderRadius: 8, padding: '10px 12px' }}>
+                <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#888888', marginBottom: 5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
+                <div style={{ display: 'flex', gap: 7, fontSize: '0.76rem', flexWrap: 'wrap', marginBottom: 4 }}>
+                  {c.rating && <span style={{ color: '#fbbf24' }}>★ {c.rating}</span>}
+                  {c.review_volume && <span style={{ color: '#444444' }}>{Number(c.review_volume).toLocaleString('de-DE')} rev.</span>}
+                  {c.price_level && <span style={{ color: '#fbbf24' }}>{c.price_level}</span>}
                 </div>
-              </Sec>
-            </>
-          ) : (
-            <div style={{ color: '#475569', fontSize: '0.85rem', padding: '20px 0' }}>Market timeline not available.</div>
+                {c.address && <div style={{ fontSize: '0.72rem', color: '#444444', lineHeight: 1.4, marginBottom: 4 }}>{c.address}</div>}
+                {c.url && <a href={c.url} target="_blank" rel="noreferrer" style={{ fontSize: '0.75rem', color: '#4e9a66' }}>Website →</a>}
+              </div>
+            ))}
+          </div>
+          <Divider />
+        </>
+      )}
+
+      {/* ═══ SYNTHETIC P&L ═══ */}
+      {pl && (
+        <>
+          <SectionLabel>Synthetic P&L — Probabilistic Estimate</SectionLabel>
+
+          {/* Model assumptions */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+            {[
+              { k: 'Est. Age', v: `${pl.estimated_age_years}y` },
+              { k: 'FTE', v: String(pl.fte_estimate) },
+              { k: 'Avg Basket', v: `€${pl.adjusted_basket_eur.toFixed(0)}` },
+              { k: 'Capture Rate', v: `${pl.capture_rate_optimistic}% – ${pl.capture_rate_expected}% – ${pl.capture_rate_pessimistic}%` },
+              { k: 'Gross Margin', v: `${pl.gross_margin_pct}%` },
+            ].map(({ k, v }) => (
+              <div key={k} style={{ padding: '6px 12px', borderRadius: 6, background: 'rgba(78,154,102,0.06)', border: '1px solid rgba(78,154,102,0.1)' }}>
+                <div style={{ fontSize: '0.68rem', color: '#444444', marginBottom: 2 }}>{k}</div>
+                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#888888', fontVariantNumeric: 'tabular-nums' }}>{v}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Sanity check warning */}
+          {pl.sanity_check.overheated && <div style={{ marginBottom: 12 }}><SanityBadge sc={pl.sanity_check} /></div>}
+
+          {/* Task 1: Probabilistic 5-year revenue chart */}
+          <ProbabilisticRevChart pl={pl} />
+
+          {/* P&L table with ranges */}
+          <PLRangeTable pl={pl} />
+
+          {/* Revenue range visual */}
+          <div style={{ marginTop: 16, marginBottom: 8 }}>
+            <div style={{ fontSize: '0.7rem', color: '#444444', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>Revenue Range (Bear → Base → Bull)</div>
+            <RangeBar range={pl.revenue} />
+            <RangeBar range={pl.ebitda} label="EBITDA Range" />
+            {pl.ebitda_margin_pct && <RangeBar range={pl.ebitda_margin_pct} formatter={v => `${v.toFixed(1)}%`} label="EBITDA Margin Range" />}
+          </div>
+
+          {/* EBITDA vs sector */}
+          {pl.industry_avg_ebitda_margin != null && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: '0.7rem', color: '#444444', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>EBITDA vs Sector Benchmark</div>
+              <EbitdaBenchmark pl={pl} />
+            </div>
           )}
+
+          {/* KPIs */}
+          <DataGrid style={{ marginBottom: 14 }}>
+            <DataCell label="Rev / Employee" value={fmtEur(pl.revenue_per_employee)} />
+            <DataCell label="Benchmark Rev/FTE" value={fmtEur(pl.sanity_check.rev_per_employee_benchmark)} />
+            <DataCell label="Ratio" value={<span style={{ color: pl.sanity_check.overheated ? '#f87171' : '#4ade80', fontWeight: 700 }}>{pl.sanity_check.ratio}×</span>} />
+            {pl.rent_as_revenue_pct != null && <DataCell label="Rent / Revenue" value={<span style={{ color: pl.rent_as_revenue_pct > 12 ? '#f87171' : '#94a3b8' }}>{pl.rent_as_revenue_pct.toFixed(1)}%</span>} />}
+            {pl.personnel_as_revenue_pct != null && <DataCell label="Personnel / Revenue" value={<span style={{ color: pl.personnel_as_revenue_pct > 35 ? '#f87171' : '#94a3b8' }}>{pl.personnel_as_revenue_pct.toFixed(1)}%</span>} />}
+            <DataCell label="Fixed Cost Ratio" value={<span style={{ color: pl.fixed_cost_ratio > 80 ? '#f87171' : pl.fixed_cost_ratio > 65 ? '#fbbf24' : '#4ade80', fontWeight: 700 }}>{pl.fixed_cost_ratio}% of gross profit</span>} />
+            <DataCell label="Breakeven Revenue" value={fmtEur(pl.breakeven_revenue)} />
+            <DataCell label="Total Fixed Costs" value={fmtEur(pl.total_fixed_costs)} />
+          </DataGrid>
+
+          <ProseBlock text={pl.risk_summary} />
+          <Divider />
+
+          {/* Dependency Matrix */}
+          <SectionLabel>Business Model & Cost Drivers</SectionLabel>
+          <DependencyMatrixBlock dm={pl.dependency_matrix} />
+          <Divider />
+        </>
+      )}
+
+      {/* ═══ MACRO ═══ */}
+      {md && lf && (
+        <>
+          <SectionLabel>Regional Macroeconomics</SectionLabel>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(140px, 170px) 1fr', gap: 16, alignItems: 'center', marginBottom: 14 }}>
+            <LFIGauge index={lf.index} />
+            <div>
+              <ProseBlock text={lf.interpretation} />
+              <DataGrid style={{ marginTop: 10 }}>
+                <DataCell label="Local Unemployment" value={<span style={{ color: lf.unemployment_pct > lf.national_avg_unemployment ? '#f87171' : '#4ade80', fontWeight: 700 }}>{lf.unemployment_pct}%</span>} />
+                <DataCell label="National Avg" value={`${lf.national_avg_unemployment}%`} />
+                <DataCell label="Wage Pressure" value={<span style={{ color: lf.wage_pressure_flag ? '#fbbf24' : '#4ade80' }}>{lf.wage_pressure_flag ? 'Elevated' : 'Normal'}</span>} />
+              </DataGrid>
+            </div>
+          </div>
+          <DataGrid style={{ marginBottom: 14 }}>
+            {md.bundesland && <DataCell label="Bundesland" value={md.bundesland} />}
+            {md.city && <DataCell label="City" value={md.city} />}
+            <DataCell label="Median Gross Wage" value={`€${md.median_gross_wage.toLocaleString('de-DE')} p.a.`} />
+            <DataCell label="Commercial Rent" value={`€${md.commercial_rent_per_sqm}/m²/mo`} />
+            <DataCell label="PPP Index" value={<span style={{ color: md.ppp_index >= 100 ? '#4ade80' : '#f87171', fontWeight: 700 }}>{md.ppp_index.toFixed(1)}</span>} />
+          </DataGrid>
+          <div style={{ marginBottom: 4 }}>
+            <div style={{ fontSize: '0.7rem', color: '#444444', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>Purchasing Power vs National Average (100)</div>
+            <PPPBar macro={md} />
+          </div>
+          <Divider />
+        </>
+      )}
+
+      {/* ═══ MARKET TIMELINE ═══ */}
+      {mt.length > 0 && (
+        <>
+          <SectionLabel>Market Dynamics — 2020–2024</SectionLabel>
+          <MarketTimeline points={mt} />
+          <div style={{ marginTop: 8, fontSize: '0.76rem', color: '#444444', lineHeight: 1.55 }}>
+            <span style={{ color: '#4e9a66', fontWeight: 600 }}>Market Index</span> — synthetic demand index combining COVID recovery trajectory, seasonal patterns and sector cycles for Germany 2020–2024. &nbsp;
+            <span style={{ color: '#fbbf24', fontWeight: 600 }}>Review Activity</span> — normalized quarterly review volume, anchored to real timestamps where available.
+          </div>
+          <Divider />
+        </>
+      )}
+
+      {/* ═══ INDUSTRY ECONOMICS ═══ */}
+      {eco && (
+        <>
+          <SectionLabel>Industry Economics — {eco.industry_label}</SectionLabel>
+          <DataGrid style={{ marginBottom: 14 }}>
+            <DataCell label="EBITDA Multiple" value={`${eco.ebitda_multiple.low}× – ${eco.ebitda_multiple.mid}× – ${eco.ebitda_multiple.high}×`} />
+            {eco.avg_margin_pct != null && <DataCell label="Avg EBITDA Margin" value={`${eco.avg_margin_pct}%`} />}
+            {eco.market_size_de_bn != null && <DataCell label="Market Size (DE)" value={`€${eco.market_size_de_bn} Mrd.`} />}
+            {eco.cagr_5y_pct != null && <DataCell label="5Y CAGR" value={`${eco.cagr_5y_pct}%`} />}
+          </DataGrid>
+          <p style={{ margin: '0 0 14px', fontSize: '0.82rem', color: '#888888', lineHeight: 1.6 }}>{eco.trend_summary}</p>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 10, marginBottom: 16 }}>
+            {[
+              { title: 'Structural Margins', text: eco.structural_margins },
+              { title: 'Business Model Mechanics', text: eco.model_mechanics },
+              { title: 'Failure Rate & Risk', text: eco.failure_rate_note },
+            ].map(({ title, text }) => (
+              <div key={title} style={{ padding: '12px 14px', borderRadius: 8, background: 'rgba(148,163,184,0.03)', border: '1px solid rgba(148,163,184,0.08)' }}>
+                <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#4e9a66', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 6 }}>{title}</div>
+                <p style={{ margin: 0, fontSize: '0.79rem', color: '#666666', lineHeight: 1.6 }}>{text}</p>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {eco.yearly.map((y, i) => (
+              <div key={i} style={{ display: 'flex', gap: 12, fontSize: '0.78rem', lineHeight: 1.6 }}>
+                <span style={{ color: '#4e9a66', fontWeight: 700, minWidth: 36, fontVariantNumeric: 'tabular-nums' }}>{y.year}</span>
+                <span style={{ color: '#444444' }}>{y.context}</span>
+              </div>
+            ))}
+          </div>
         </>
       )}
     </div>
   );
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────────
+// ── Main ───────────────────────────────────────────────────────────────────────
 
 export default function Home() {
   const [urls, setUrls] = useState('');
@@ -835,7 +1016,7 @@ export default function Home() {
 
   const handleExtract = async () => {
     const urlList = parseUrls(urls);
-    if (urlList.length === 0) { setError('Paste at least one Google Maps link.'); return; }
+    if (!urlList.length) { setError('Paste at least one Google Maps link.'); return; }
     setLoading(true); setError(''); setResults([]);
     const extracted: ExtractionData[] = [];
     for (let i = 0; i < urlList.length; i++) {
@@ -846,7 +1027,7 @@ export default function Home() {
       } catch (err) { console.error(err); }
     }
     setResults(extracted); setProgress(''); setLoading(false);
-    if (extracted.length === 0) setError('No results extracted. Check that the links are valid Google Maps URLs.');
+    if (!extracted.length) setError('No results extracted. Check that the links are valid Google Maps URLs.');
   };
 
   const downloadJSON = () => {
@@ -858,24 +1039,25 @@ export default function Home() {
 
   const downloadCSV = () => {
     if (!results.length) return;
-    const headers = ['Name','Category','Rating','Reviews','Address','Phone','PLZ','Landkreis','Bundesland','City','Country','Lat','Lng','Website','PriceLevel','OpenNow','WeeklyHours','Sentiment','TouristPct','Emails','Instagram','EbitdaMid','MarketDEbn','PricingPower','PricePremiumIdx','RatingPremium','DemandShare%','Competitors','AQI','Revenue','EBITDA','EbitdaMargin%','FTE','LaborFrictionIdx','PPPIndex','PlaceID'];
+    const headers = ['Name','Category','Rating','Reviews','Address','Phone','PLZ','Landkreis','Bundesland','City','Country','Lat','Lng','Website','PriceLevel','OpenNow','WeeklyHours','Sentiment','TouristPct','Emails','Instagram','EbitdaMid','EbitdaMultipleMid','MarketDEbn','PricingPower','PricePremiumIdx','RatingPremium','Competitors','AQI','Rev_Low','Rev_Mid','Rev_High','EBITDA_Low','EBITDA_Mid','EBITDA_High','FTE','LaborFrictionIdx','PPPIndex','Zone','FootTrafficScore','TransportDist','CityCenter_m','PlaceID'];
     const rows = results.map(r => [
       r.name, r.category, r.rating, r.review_volume, r.address, r.phone,
       r.address_detail?.postal_code, r.address_detail?.landkreis, r.address_detail?.bundesland, r.city, r.country,
       r.latitude, r.longitude, r.website, r.price_level, r.is_open,
       r.opening_hours?.total_weekly_hours, r.review_analysis?.sentiment_score, r.review_analysis?.tourist_ratio_pct,
       r.website_data?.emails.join('; '), r.website_data?.socials?.instagram,
-      r.industry_economics?.ebitda_multiple.mid, r.industry_economics?.market_size_de_bn,
+      r.synthetic_pl?.ebitda.mid, r.industry_economics?.ebitda_multiple.mid, r.industry_economics?.market_size_de_bn,
       r.pricing_power?.confirmed, r.pricing_power?.price_premium_index, r.pricing_power?.rating_premium,
-      r.pricing_power?.local_demand_share_pct,
       r.competitor_count, r.area_metrics?.quality_index,
-      r.synthetic_pl?.estimated_revenue, r.synthetic_pl?.ebitda, r.synthetic_pl?.ebitda_margin_pct,
+      r.synthetic_pl?.revenue.low, r.synthetic_pl?.revenue.mid, r.synthetic_pl?.revenue.high,
+      r.synthetic_pl?.ebitda.low, r.synthetic_pl?.ebitda.mid, r.synthetic_pl?.ebitda.high,
       r.synthetic_pl?.fte_estimate, r.labor_friction?.index, r.macro_data?.ppp_index,
+      r.spatial_context?.zone_classification, r.spatial_context?.foot_traffic_score,
+      r.spatial_context?.nearest_transport?.distance_m, r.spatial_context?.city_center_distance_m,
       r.place_id,
     ].map(v => `"${v ?? ''}"`).join(','));
-    const csv = [headers.join(','), ...rows].join('\n');
     const a = document.createElement('a');
-    a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+    a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent([headers.join(','), ...rows].join('\n'));
     a.download = 'firmadeal_export.csv'; a.click();
   };
 
@@ -884,16 +1066,16 @@ export default function Home() {
       <div className="page">
         <div className="header">
           <h1>Firmadeal Extractor</h1>
-          <p>Full-stack business intelligence for acquisition research</p>
+          <p>Business intelligence for acquisition research</p>
         </div>
 
         <div className="panel">
           <label className="label">Paste Google Maps links</label>
           <textarea className="textarea" value={urls} onChange={e => setUrls(e.target.value)}
-            placeholder={`https://maps.app.goo.gl/aEhAJeQvLueyFUcr6\nhttps://maps.app.goo.gl/...\n\nOne per line, or separated by spaces / commas`} rows={5} />
+            placeholder="https://maps.app.goo.gl/...\nOne per line, or comma / space separated" rows={4} />
           <div className="button-row">
             <button className="button" onClick={handleExtract} disabled={loading}>
-              {loading ? progress || 'Extracting…' : 'Extract Data'}
+              {loading ? progress || 'Extracting…' : 'Extract Intelligence'}
             </button>
           </div>
         </div>
@@ -902,11 +1084,11 @@ export default function Home() {
 
         {results.length > 0 && (
           <>
-            <div className="result-actions" style={{ marginBottom: 18 }}>
-              <p>{results.length} business{results.length !== 1 ? 'es' : ''} extracted</p>
-              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                <button className="button" onClick={downloadJSON}>Download JSON</button>
-                <button className="button" onClick={downloadCSV}>Download CSV</button>
+            <div className="result-actions" style={{ marginBottom: 16 }}>
+              <p style={{ color: '#666666', fontSize: '0.85rem' }}>{results.length} business{results.length !== 1 ? 'es' : ''} extracted</p>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button className="button" onClick={downloadJSON}>JSON</button>
+                <button className="button" onClick={downloadCSV}>CSV</button>
                 <button className="button secondary" onClick={() => { setResults([]); setUrls(''); setError(''); }}>Clear</button>
               </div>
             </div>
@@ -916,27 +1098,20 @@ export default function Home() {
           </>
         )}
 
-        {results.length === 0 && !loading && (
+        {!results.length && !loading && (
           <div className="panel">
-            <h3 style={{ color: '#38bdf8', marginBottom: 14, fontWeight: 700 }}>Output per business</h3>
+            <h3 style={{ color: '#4e9a66', marginBottom: 14, fontWeight: 700, fontSize: '0.95rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Intelligence modules</h3>
             <ul className="info-list">
-              <li><span>🔴/🟢</span><strong>Pricing Power Engine</strong> — Price Premium Index, Rating Premium, Local Demand Share, Sentiment Ratio → confirmed moat boolean</li>
-              <li><span>📡</span><strong>Competitor Radar</strong> — multi-metric chart vs. local market average (rating, reviews, sentiment, digital, price)</li>
-              <li><span>🎯</span><strong>Area Quality Index</strong> — 0–100 gauge from rating density, operational %, POI foot traffic</li>
-              <li><span>💬</span><strong>NLP Review Analysis</strong> — categorized praises and complaints with real quote examples</li>
-              <li><span>💰</span><strong>Synthetic P&L</strong> — reverse-engineered Revenue, EBITDA, FTE, personnel &amp; facility costs with risk matrix</li>
-              <li><span>📍</span><strong>Macro / Labor</strong> — Bundesland unemployment, PPP index, Labor Friction gauge</li>
+              <li><span>💰</span><strong>Probabilistic P&L</strong> — Bear / Base / Bull revenue, EBITDA, margin ranges with sanity-check ceiling and model compression alerts</li>
+              <li><span>📐</span><strong>Cost Driver Matrix</strong> — sector-specific structural pressures, severity ratings, EBITDA drag in percentage points</li>
+              <li><span>📍</span><strong>Location Economics</strong> — walking distance to nearest transport hub, distance to city center, zone classification, foot traffic score</li>
+              <li><span>🏭</span><strong>Deep Industry Economics</strong> — structural margins, business model mechanics, failure rates, 5-year context</li>
+              <li><span>🔴/🟢</span><strong>Pricing Power Engine</strong> — 4-factor moat signal with price premium, rating premium, demand share, sentiment</li>
+              <li><span>📡</span><strong>Competitor Radar</strong> — multi-metric chart vs local market average</li>
               <li><span>📈</span><strong>Market Timeline</strong> — 20-quarter demand index 2020–2024 with COVID trajectory</li>
-              <li><span>🌐</span><strong>Website Intelligence</strong> — emails, social profiles, meta description, keywords</li>
-              <li><span>📋</span>Full address (PLZ, Landkreis, Bundesland), opening hours, service flags, photos, competitors</li>
-            </ul>
-            <h3 style={{ color: '#38bdf8', margin: '20px 0 14px', fontWeight: 700 }}>How to use</h3>
-            <ul className="info-list">
-              <li><span>1.</span>Open a business on Google Maps → copy the link</li>
-              <li><span>2.</span>Paste above — newlines, spaces, or commas all work</li>
-              <li><span>3.</span>Click <strong>Extract Data</strong> — ~8–12 s per business</li>
-              <li><span>4.</span>Switch tabs: <strong>Overview / Financials / Macro / Market</strong></li>
-              <li><span>5.</span>Download JSON or CSV for CRM / deal memo import</li>
+              <li><span>🌍</span><strong>Macro / Labor</strong> — Bundesland PPP index, unemployment, Labor Friction Index gauge</li>
+              <li><span>💬</span><strong>NLP Sentiment</strong> — categorized praises and complaints from review text</li>
+              <li><span>🌐</span><strong>Website Intel</strong> — emails, social profiles, meta description, keywords</li>
             </ul>
           </div>
         )}
