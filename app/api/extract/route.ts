@@ -163,20 +163,19 @@ async function extractInstitutionalData(url: string): Promise<ExtractionPayload>
         const bodyText = document.body.innerText;
         const lines = bodyText.split('\n').map((l) => l.trim()).filter(Boolean);
 
-        // Find category (usually after "Přehled" or "Recenze" section labels)
+        // Find category - look for text after rating/review count pattern
         const navMenuItems = ['Restaurace', 'Hotely', 'Tipy', 'MHD', 'Parkování', 'Lékárny', 'Bankomaty', 'Uloženo', 'Poslední'];
-        let foundName = false;
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i];
-          // First find the business name
-          if (line.includes('Auto Nord') || line.includes('Nord Group') || line.includes('Škoda')) {
-            foundName = true;
-            // Now look ahead for category (next non-empty, non-navigation line)
-            for (let j = i + 1; j < Math.min(i + 8, lines.length); j++) {
+          // Look for rating pattern (e.g., "4,2" or "4.2")
+          if (line.match(/^\d+[,\.]\d+$/)) {
+            // Found rating - category should be within next 5 lines
+            for (let j = i + 1; j < Math.min(i + 5, lines.length); j++) {
               const nextLine = lines[j];
               if (
                 !navMenuItems.includes(nextLine) &&
                 !nextLine.match(/^(Stáhnout|Prohlédnout|Přehled|Recenze|Fotky|Trasa|Uložit|V okolí|Poslat|Sdílet|Přihlášení)/) &&
+                !nextLine.match(/^\(\d+\)$/) &&
                 nextLine.length > 4 &&
                 nextLine.length < 60
               ) {
@@ -184,9 +183,19 @@ async function extractInstitutionalData(url: string): Promise<ExtractionPayload>
                 break;
               }
             }
+            // Also extract rating and reviews here
+            result.rating = line;
+            // Look for review count (pattern like "(5)")
+            for (const reviewLine of lines) {
+              if (reviewLine.match(/^\(\d+\)$/)) {
+                result.reviews = reviewLine.replace(/[()]/g, '');
+                break;
+              }
+            }
             break;
           }
         }
+
 
         // Find address (contains street and postal code)
         for (const line of lines) {
@@ -208,21 +217,6 @@ async function extractInstitutionalData(url: string): Promise<ExtractionPayload>
         for (const line of lines) {
           if (line.match(/^[a-zA-Z0-9][a-zA-Z0-9\-]*\.[a-zA-Z]{2,}$/) && !line.includes(' ') && !line.match(/^(google|maps|support)/)) {
             result.website = line;
-            break;
-          }
-        }
-
-        // Find rating (e.g., "4,2" with Czech locale comma)
-        for (const line of lines) {
-          if (line.match(/^\d+[,\.]\d+$/)) {
-            result.rating = line;
-            // Look for review count in next line or same pattern with parentheses
-            for (const reviewLine of lines) {
-              if (reviewLine.match(/^\(\d+\)$/)) {
-                result.reviews = reviewLine.replace(/[()]/g, '');
-                break;
-              }
-            }
             break;
           }
         }
