@@ -41,3 +41,4 @@ yarn-error.log*
 .vercel
 pipeline/scrapers/__pycache__/
 pipeline/output/
+pipeline/.env
