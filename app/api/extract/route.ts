@@ -135,6 +135,39 @@ export interface ClimateData {
   monthly: WeatherMonth[];
 }
 
+// ── Task 5–8 interfaces ───────────────────────────────────────────────────────
+
+export interface CityDemographics {
+  population: number | null; population_density_per_km2: number | null;
+  market_saturation_index: number | null; gdp_per_capita_eur: number | null;
+  demographic_growth_5y_pct: number | null; trend: 'growing' | 'stable' | 'declining';
+  data_source: string; interpretation: string;
+}
+
+export interface SupplyChainRisk { category: string; ppi_index: number; trend: 'rising' | 'stable' | 'falling'; margin_impact_pct: number; }
+export interface EnergyVulnerability {
+  energy_dependency_score: number; estimated_annual_kwh: number; estimated_energy_cost_eur: number;
+  energy_as_opex_pct: number; ppi_sensitivity: 'low' | 'medium' | 'high' | 'critical';
+  supply_chain_risks: SupplyChainRisk[]; high_risk_flag: boolean;
+  overall_risk: 'low' | 'medium' | 'high' | 'critical'; interpretation: string;
+}
+
+export interface DigitalRiskItem { type: string; severity: 'low' | 'medium' | 'high' | 'critical'; description: string; }
+export interface DigitalVulnerability {
+  domain: string | null; ssl_valid: boolean | null; spf_present: boolean | null;
+  dmarc_present: boolean | null; dkim_present: boolean | null;
+  security_headers_score: number; missing_headers: string[];
+  risk_level: 'low' | 'medium' | 'high' | 'critical'; risks: DigitalRiskItem[]; overall_risk_score: number;
+}
+
+export interface LaborMarketLiquidity {
+  sector: string; avg_vacancy_days: number; bottleneck_flag: boolean;
+  vacancy_trend: 'improving' | 'stable' | 'worsening';
+  replacement_cost_per_fte_eur: number; total_replacement_cost_eur: number;
+  fte_count: number; recruitment_friction_score: number;
+  interpretation: string; risk_signals: string[];
+}
+
 // ── Payload ────────────────────────────────────────────────────────────────────
 
 export interface ExtractionPayload {
@@ -165,6 +198,10 @@ export interface ExtractionPayload {
   spatial_context: SpatialContext | null;
   search_interest: string | null; spot_category: string | null;
   climate_data: ClimateData | null;
+  city_demographics: CityDemographics | null;
+  energy_vulnerability: EnergyVulnerability | null;
+  digital_vulnerability: DigitalVulnerability | null;
+  labor_market: LaborMarketLiquidity | null;
 }
 
 // ── Industry economics (expanded) ─────────────────────────────────────────────
@@ -496,6 +533,104 @@ const AT_CITY_RENT_MAP: [string[], number][] = [
   [['salzburg', 'innsbruck'], 24],
   [['graz', 'linz'], 18],
 ];
+
+// ── Task 5: City demographics lookup ─────────────────────────────────────────
+// population, density/km², gdp_per_capita €, 5y growth %
+interface CityDemoEntry { pop: number; density: number; gdp: number; growth: number; }
+const CITY_DEMO: Record<string, CityDemoEntry> = {
+  'berlin':      { pop:3700000, density:4100, gdp:41200, growth:3.8  },
+  'hamburg':     { pop:1800000, density:2400, gdp:65000, growth:2.1  },
+  'münchen':     { pop:1500000, density:4800, gdp:62000, growth:4.2  },
+  'munich':      { pop:1500000, density:4800, gdp:62000, growth:4.2  },
+  'köln':        { pop:1080000, density:2800, gdp:43800, growth:2.5  },
+  'cologne':     { pop:1080000, density:2800, gdp:43800, growth:2.5  },
+  'frankfurt':   { pop:760000,  density:3000, gdp:73000, growth:2.8  },
+  'stuttgart':   { pop:630000,  density:3000, gdp:50200, growth:1.2  },
+  'düsseldorf':  { pop:620000,  density:2900, gdp:45500, growth:1.8  },
+  'dusseldorf':  { pop:620000,  density:2900, gdp:45500, growth:1.8  },
+  'leipzig':     { pop:600000,  density:2000, gdp:34200, growth:5.5  },
+  'dortmund':    { pop:590000,  density:2300, gdp:39500, growth:0.8  },
+  'essen':       { pop:580000,  density:2800, gdp:38200, growth:-0.5 },
+  'bremen':      { pop:570000,  density:1700, gdp:46800, growth:0.4  },
+  'dresden':     { pop:570000,  density:1700, gdp:34200, growth:3.2  },
+  'hannover':    { pop:540000,  density:2400, gdp:38200, growth:1.0  },
+  'nürnberg':    { pop:520000,  density:2700, gdp:48500, growth:2.1  },
+  'nuremberg':   { pop:520000,  density:2700, gdp:48500, growth:2.1  },
+  'duisburg':    { pop:490000,  density:2100, gdp:37500, growth:-1.2 },
+  'bochum':      { pop:360000,  density:2500, gdp:38200, growth:-0.4 },
+  'wuppertal':   { pop:355000,  density:1800, gdp:38200, growth:-0.8 },
+  'bonn':        { pop:330000,  density:2300, gdp:43800, growth:2.0  },
+  'münster':     { pop:315000,  density:1000, gdp:38200, growth:2.8  },
+  'mannheim':    { pop:310000,  density:2200, gdp:50200, growth:1.5  },
+  'karlsruhe':   { pop:305000,  density:1900, gdp:50200, growth:2.2  },
+  'augsburg':    { pop:295000,  density:2000, gdp:52500, growth:3.0  },
+  'wiesbaden':   { pop:275000,  density:1300, gdp:49800, growth:1.8  },
+  'aachen':      { pop:250000,  density:1700, gdp:43800, growth:1.0  },
+  'chemnitz':    { pop:240000,  density:1100, gdp:34200, growth:-1.5 },
+  'kiel':        { pop:240000,  density:2100, gdp:37400, growth:0.2  },
+  'freiburg':    { pop:230000,  density:1500, gdp:39800, growth:3.5  },
+  'mainz':       { pop:220000,  density:2200, gdp:49800, growth:2.0  },
+  'erfurt':      { pop:215000,  density:700,  gdp:32500, growth:1.2  },
+  'regensburg':  { pop:155000,  density:1800, gdp:52500, growth:4.0  },
+  'ingolstadt':  { pop:135000,  density:1100, gdp:72000, growth:2.5  },
+  // Czech Republic
+  'praha':       { pop:1300000, density:2600, gdp:38000, growth:4.2  },
+  'prague':      { pop:1300000, density:2600, gdp:38000, growth:4.2  },
+  'brno':        { pop:395000,  density:1700, gdp:26000, growth:2.5  },
+  'ostrava':     { pop:280000,  density:1000, gdp:18000, growth:-2.1 },
+  'plzeň':       { pop:175000,  density:900,  gdp:22000, growth:1.8  },
+  'plzen':       { pop:175000,  density:900,  gdp:22000, growth:1.8  },
+  'liberec':     { pop:105000,  density:1100, gdp:17000, growth:0.8  },
+  'olomouc':     { pop:100000,  density:900,  gdp:18500, growth:0.5  },
+  'jablonec':    { pop:45000,   density:1000, gdp:16500, growth:-0.8 },
+  // Austria
+  'wien':        { pop:1900000, density:4500, gdp:52000, growth:5.5  },
+  'vienna':      { pop:1900000, density:4500, gdp:52000, growth:5.5  },
+  'graz':        { pop:290000,  density:1500, gdp:40000, growth:4.2  },
+  'linz':        { pop:205000,  density:1700, gdp:49000, growth:2.5  },
+  'salzburg':    { pop:155000,  density:1500, gdp:47000, growth:2.8  },
+  'innsbruck':   { pop:130000,  density:2300, gdp:44000, growth:3.0  },
+};
+
+// ── Task 6: Energy & PPI tables ───────────────────────────────────────────────
+interface EnergyParamsData { kwh_per_sqm: number; inputs: string[]; }
+const ENERGY_CATEGORY_PARAMS: Record<string, EnergyParamsData> = {
+  bakery:     { kwh_per_sqm: 70, inputs: ['flour','butter','eggs','natural_gas'] },
+  restaurant: { kwh_per_sqm: 42, inputs: ['meat','produce','dairy','beverages'] },
+  cafe:       { kwh_per_sqm: 35, inputs: ['coffee_beans','dairy','packaging'] },
+  bar:        { kwh_per_sqm: 28, inputs: ['spirits','beer_wine','refrigeration'] },
+  lodging:    { kwh_per_sqm: 50, inputs: ['heating','laundry','cleaning'] },
+};
+const ENERGY_DEFAULT_PARAMS: EnergyParamsData = { kwh_per_sqm: 38, inputs: ['beverages','cleaning'] };
+
+// DE PPI 2024 (basis 2020=100)
+const PPI_INPUTS: Record<string, { index: number; trend: 'rising' | 'stable' | 'falling'; impact: number }> = {
+  flour:        { index: 130, trend: 'stable',  impact: 3.2 },
+  butter:       { index: 145, trend: 'falling', impact: 4.1 },
+  eggs:         { index: 138, trend: 'stable',  impact: 1.8 },
+  natural_gas:  { index: 152, trend: 'falling', impact: 8.5 },
+  meat:         { index: 118, trend: 'stable',  impact: 5.2 },
+  produce:      { index: 122, trend: 'rising',  impact: 3.8 },
+  dairy:        { index: 128, trend: 'stable',  impact: 2.9 },
+  beverages:    { index: 116, trend: 'stable',  impact: 2.1 },
+  coffee_beans: { index: 168, trend: 'rising',  impact: 6.2 },
+  packaging:    { index: 125, trend: 'falling', impact: 1.5 },
+  spirits:      { index: 112, trend: 'stable',  impact: 2.8 },
+  beer_wine:    { index: 118, trend: 'rising',  impact: 3.5 },
+  refrigeration:{ index: 135, trend: 'stable',  impact: 2.2 },
+  heating:      { index: 148, trend: 'falling', impact: 5.5 },
+  laundry:      { index: 122, trend: 'stable',  impact: 2.0 },
+  cleaning:     { index: 118, trend: 'stable',  impact: 1.2 },
+};
+
+// ── Task 8: Labor market params ────────────────────────────────────────────────
+const LABOR_PARAMS: Record<string, { days: number; trend: 'improving' | 'stable' | 'worsening'; rep_months: number }> = {
+  bakery:     { days: 68, trend: 'worsening', rep_months: 2.5 },
+  restaurant: { days: 42, trend: 'worsening', rep_months: 1.8 },
+  cafe:       { days: 38, trend: 'stable',    rep_months: 1.5 },
+  bar:        { days: 45, trend: 'stable',    rep_months: 1.8 },
+  lodging:    { days: 55, trend: 'worsening', rep_months: 2.2 },
+};
 
 // ── Unemployment history ───────────────────────────────────────────────────────
 function generateUnemploymentHistory(basePct: number, countryCode: string | null): { month: string; rate: number }[] {
@@ -869,6 +1004,123 @@ function calcClimateData(
   };
 }
 
+// ── Task 5: City Demographics ─────────────────────────────────────────────────
+
+function calcCityDemographics(city: string | null, competitorCount: number | null, countryCode?: string | null): CityDemographics {
+  const ci = (city ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const entry = Object.entries(CITY_DEMO).find(([k]) => ci.includes(k) || k.includes(ci.split(' ')[0]))?.[1] ?? null;
+
+  const pop = entry?.pop ?? null;
+  const saturation = (pop && competitorCount != null) ? Math.round((competitorCount / pop) * 10000 * 10) / 10 : null;
+  const growth = entry?.growth ?? null;
+  const trend: CityDemographics['trend'] = growth == null ? 'stable' : growth > 1.5 ? 'growing' : growth < -0.5 ? 'declining' : 'stable';
+  const src = countryCode === 'CZ' ? 'ČSÚ / CZSO 2024' : countryCode === 'AT' ? 'Statistik Austria 2024' : 'Destatis / BBSR 2024';
+
+  const parts: string[] = [];
+  if (pop) parts.push(`Population ${pop.toLocaleString('de-DE')} · ${entry!.density.toLocaleString('de-DE')}/km².`);
+  if (saturation != null) parts.push(`Saturation: ${saturation} competitors/10k residents — ${saturation < 1 ? 'low, entry opportunity' : saturation < 3 ? 'moderate density' : 'high competitive pressure'}.`);
+  if (growth != null) parts.push(`5Y demographic trend ${growth > 0 ? '+' : ''}${growth}% — ${trend === 'growing' ? 'expanding market' : trend === 'declining' ? 'contracting market, demand headwinds ahead' : 'stable market'}.`);
+  if (entry?.gdp) parts.push(`GDP/capita €${entry.gdp.toLocaleString('de-DE')}.`);
+
+  return { population: pop, population_density_per_km2: entry?.density ?? null, market_saturation_index: saturation, gdp_per_capita_eur: entry?.gdp ?? null, demographic_growth_5y_pct: growth, trend, data_source: src, interpretation: parts.join(' ') };
+}
+
+// ── Task 6: Energy & Supply Chain Vulnerability ───────────────────────────────
+
+function calcEnergyVulnerability(types: string[], facilitySqm: number, macroData: MacroData): EnergyVulnerability {
+  const pt = types.find(t => ENERGY_CATEGORY_PARAMS[t]) ?? 'restaurant';
+  const ep = ENERGY_CATEGORY_PARAMS[pt] ?? ENERGY_DEFAULT_PARAMS;
+  const elecPrice = macroData.country_code === 'CZ' ? 0.16 : macroData.country_code === 'AT' ? 0.18 : macroData.country_code === 'CH' ? 0.20 : 0.24;
+
+  const annualKwh = Math.round(facilitySqm * ep.kwh_per_sqm);
+  const energyCost = Math.round(annualKwh * elecPrice);
+  const facilityAnnual = macroData.commercial_rent_per_sqm * facilitySqm * 12;
+  const opexProxy = facilityAnnual * 5; // rough: rent is ~20% of total opex
+  const energyPct = opexProxy > 0 ? Math.round((energyCost / opexProxy) * 1000) / 10 : 0;
+
+  const supplyRisks: SupplyChainRisk[] = ep.inputs.map(inp => {
+    const d = PPI_INPUTS[inp]; if (!d) return null;
+    return { category: inp.replace(/_/g, ' '), ppi_index: d.index, trend: d.trend, margin_impact_pct: d.impact };
+  }).filter(Boolean) as SupplyChainRisk[];
+
+  const maxPPI = Math.max(...supplyRisks.map(r => r.ppi_index), 100);
+  const ppiSens: EnergyVulnerability['ppi_sensitivity'] = maxPPI >= 160 ? 'critical' : maxPPI >= 135 ? 'high' : maxPPI >= 118 ? 'medium' : 'low';
+  const score = Math.min(100, Math.round((energyPct / 15) * 100));
+  const highRisk = energyPct > 10 || ppiSens === 'critical';
+  const overall: EnergyVulnerability['overall_risk'] = (energyPct > 12 || ppiSens === 'critical') ? 'critical' : (energyPct > 8 || ppiSens === 'high') ? 'high' : (energyPct > 5 || ppiSens === 'medium') ? 'medium' : 'low';
+
+  const risingInputs = supplyRisks.filter(r => r.ppi_index > 130).map(r => r.category).join(', ');
+  const interp = `Energy: ~${annualKwh.toLocaleString('de-DE')} kWh/year · €${energyCost.toLocaleString('de-DE')}/year at €${elecPrice}/kWh commercial rate. ` +
+    `Energy represents ~${energyPct}% of estimated operating costs — ${overall} exposure. ` +
+    (risingInputs ? `High-pressure supply inputs: ${risingInputs}.` : 'Supply chain inputs within normal range.');
+
+  return { energy_dependency_score: score, estimated_annual_kwh: annualKwh, estimated_energy_cost_eur: energyCost, energy_as_opex_pct: energyPct, ppi_sensitivity: ppiSens, supply_chain_risks: supplyRisks, high_risk_flag: highRisk, overall_risk: overall, interpretation: interp };
+}
+
+// ── Task 7: Digital Vulnerability ─────────────────────────────────────────────
+
+async function calcDigitalVulnerability(websiteUrl: string | null): Promise<DigitalVulnerability> {
+  const domain = websiteUrl ? (() => { try { return new URL(websiteUrl).hostname.replace(/^www\./, ''); } catch { return null; } })() : null;
+  if (!domain) {
+    return { domain: null, ssl_valid: null, spf_present: null, dmarc_present: null, dkim_present: null, security_headers_score: 0, missing_headers: [], risk_level: 'high', risks: [{ type: 'No Website', severity: 'high', description: 'No website detected. Missing digital presence eliminates online discoverability, booking channels and direct customer acquisition.' }], overall_risk_score: 75 };
+  }
+
+  const [spfRes, dmarcRes, headRes] = await Promise.allSettled([
+    fetch(`https://cloudflare-dns.com/dns-query?name=${domain}&type=TXT`, { headers: { Accept: 'application/dns-json' }, signal: AbortSignal.timeout(5000) }).then(r => r.json()),
+    fetch(`https://cloudflare-dns.com/dns-query?name=_dmarc.${domain}&type=TXT`, { headers: { Accept: 'application/dns-json' }, signal: AbortSignal.timeout(5000) }).then(r => r.json()),
+    fetch(`https://${domain}`, { method: 'HEAD', signal: AbortSignal.timeout(6000), redirect: 'follow' }).then(r => ({ ok: r.ok, h: Object.fromEntries([...r.headers.entries()]) })),
+  ]);
+
+  const spf   = spfRes.status   === 'fulfilled' ? (spfRes.value?.Answer?.some((a: any)   => String(a.data).includes('v=spf1'))    ?? false) : false;
+  const dmarc = dmarcRes.status === 'fulfilled' ? (dmarcRes.value?.Answer?.some((a: any) => String(a.data).includes('v=DMARC1')) ?? false) : false;
+  const head  = headRes.status  === 'fulfilled' ? headRes.value : null;
+  const sslOk = head?.ok ?? false;
+  const hdrs  = head?.h ?? {};
+
+  const wantHeaders = ['strict-transport-security','x-frame-options','x-content-type-options','content-security-policy'];
+  const missing = wantHeaders.filter(h => !hdrs[h]);
+  const hScore  = Math.round(((wantHeaders.length - missing.length) / wantHeaders.length) * 100);
+
+  const risks: DigitalRiskItem[] = [];
+  if (!sslOk)   risks.push({ type: 'SSL/TLS Issue',      severity: 'critical', description: 'HTTPS handshake failed — certificate may be expired or misconfigured. Triggers browser security warnings and immediate loss of customer trust.' });
+  if (!spf)     risks.push({ type: 'Missing SPF Record', severity: 'high',     description: 'No SPF record. Attackers can spoof this domain in phishing emails — a primary vector for business email compromise and supplier fraud.' });
+  if (!dmarc)   risks.push({ type: 'Missing DMARC',      severity: 'high',     description: 'No DMARC policy. Without DMARC, spoofed emails go undetected and the owner has zero visibility into fraudulent domain use.' });
+  if (missing.includes('strict-transport-security')) risks.push({ type: 'No HSTS',   severity: 'medium', description: 'Missing Strict-Transport-Security. Allows protocol downgrade attacks on customer connections.' });
+  if (missing.includes('content-security-policy'))   risks.push({ type: 'No CSP',    severity: 'medium', description: 'No Content Security Policy. Elevated XSS risk on any dynamic page including booking or contact forms.' });
+  if (missing.includes('x-frame-options'))            risks.push({ type: 'No X-Frame', severity: 'low',   description: 'Pages embeddable in iframes — enables clickjacking on reservation or payment flows.' });
+
+  const s = Math.min(100, risks.filter(r => r.severity === 'critical').length * 35 + risks.filter(r => r.severity === 'high').length * 20 + risks.filter(r => r.severity === 'medium').length * 10 + risks.filter(r => r.severity === 'low').length * 5 + Math.round((100 - hScore) * 0.15));
+  const rl: DigitalVulnerability['risk_level'] = s >= 70 ? 'critical' : s >= 45 ? 'high' : s >= 20 ? 'medium' : 'low';
+
+  return { domain, ssl_valid: sslOk, spf_present: spf, dmarc_present: dmarc, dkim_present: null, security_headers_score: hScore, missing_headers: missing, risk_level: rl, risks, overall_risk_score: s };
+}
+
+// ── Task 8: Labor Market Liquidity ────────────────────────────────────────────
+
+function calcLaborMarketLiquidity(types: string[], macroData: MacroData, fte: number, sectorWage: number): LaborMarketLiquidity {
+  const pt = types.find(t => LABOR_PARAMS[t]) ?? 'restaurant';
+  const lp = LABOR_PARAMS[pt] ?? { days: 45, trend: 'stable' as const, rep_months: 2.0 };
+  const adj = macroData.unemployment_pct < 3 ? 1.28 : macroData.unemployment_pct < 4.5 ? 1.12 : macroData.unemployment_pct > 7 ? 0.85 : 1.0;
+  const vacDays  = Math.round(lp.days * adj);
+  const bottleneck = vacDays > 45;
+  const repCostFte = Math.round(sectorWage * (lp.rep_months / 12));
+  const repCostTotal = Math.round(repCostFte * fte);
+  const frictionScore = Math.min(100, Math.round((vacDays / 90) * 100));
+
+  const signals: string[] = [];
+  if (vacDays > 60)   signals.push(`Avg time-to-fill ${vacDays} days — well above 45-day bottleneck threshold`);
+  if (macroData.unemployment_pct < 3) signals.push(`Unemployment ${macroData.unemployment_pct}% — near-full employment, candidates have leverage`);
+  if (lp.trend === 'worsening') signals.push('Sector recruitment conditions deteriorating — budget 10–20% above posted wage rates');
+  if (repCostTotal > 15000) signals.push(`Staff churn risk: replacing all FTE costs ~€${repCostTotal.toLocaleString('de-DE')}`);
+
+  const interp = `${bottleneck ? '⚑ BOTTLENECK: ' : ''}Typical time-to-fill for ${pt} roles in this market: ${vacDays} days. ` +
+    `Replacing ${fte} FTE at €${repCostFte.toLocaleString('de-DE')}/person ≈ €${repCostTotal.toLocaleString('de-DE')} total replacement cost ` +
+    `(${lp.rep_months} months salary including recruitment, training & ramp-up). ` +
+    (lp.trend === 'worsening' ? 'Conditions worsening — factor wage escalation into the acquisition model.' : lp.trend === 'improving' ? 'Labour market loosening in this sector.' : 'Conditions stable.');
+
+  return { sector: pt, avg_vacancy_days: vacDays, bottleneck_flag: bottleneck, vacancy_trend: lp.trend, replacement_cost_per_fte_eur: repCostFte, total_replacement_cost_eur: repCostTotal, fte_count: fte, recruitment_friction_score: frictionScore, interpretation: interp, risk_signals: signals };
+}
+
 // ── Spatial context ───────────────────────────────────────────────────────────
 
 function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -1207,6 +1459,7 @@ async function extractFromUrl(inputUrl: string): Promise<ExtractionPayload> {
     macro_data: null, labor_friction: null, synthetic_pl: null, market_timeline: [],
     industry_economics: null, spatial_context: null, climate_data: null,
     search_interest: null, spot_category: null,
+    city_demographics: null, energy_vulnerability: null, digital_vulnerability: null, labor_market: null,
   };
 
   const fullUrl = await resolveUrl(inputUrl);
@@ -1260,12 +1513,13 @@ async function extractFromUrl(inputUrl: string): Promise<ExtractionPayload> {
   if (payload.category) { payload.search_interest = payload.city ? `${payload.category} in ${payload.city}` : payload.category; payload.spot_category = payload.category; }
 
   const lat = payload.latitude; const lng = payload.longitude;
-  const [websiteData, competitorList, pois, spatialCtx, weatherRaw] = await Promise.all([
+  const [websiteData, competitorList, pois, spatialCtx, weatherRaw, digitalVuln] = await Promise.all([
     payload.website ? scrapeWebsite(payload.website) : Promise.resolve(null),
     (lat !== null && lng !== null && payload.types.length) ? nearbyCompetitors(lat, lng, payload.types) : Promise.resolve([]),
     (lat !== null && lng !== null) ? fetchOverpassPOIs(lat, lng) : Promise.resolve([]),
     (lat !== null && lng !== null) ? calcSpatialContext(lat, lng) : Promise.resolve(null),
     (lat !== null && lng !== null) ? fetchWeatherData(lat, lng) : Promise.resolve(null),
+    calcDigitalVulnerability(payload.website),
   ]);
 
   payload.website_data = websiteData;
@@ -1273,6 +1527,7 @@ async function extractFromUrl(inputUrl: string): Promise<ExtractionPayload> {
   payload.competitor_count = payload.competitors.length;
   payload.points_of_interest = pois;
   payload.spatial_context = spatialCtx;
+  payload.digital_vulnerability = digitalVuln;
 
   const targetReviewCount = payload.review_volume ? parseInt(payload.review_volume) : payload.reviews.length;
   const targetRatingNum   = payload.rating ? parseFloat(payload.rating) : null;
@@ -1290,6 +1545,14 @@ async function extractFromUrl(inputUrl: string): Promise<ExtractionPayload> {
     payload.climate_data = calcClimateData(lat, lng, weatherRaw, payload.market_timeline, payload.types);
   }
   payload.industry_economics = getIndustryEconomics(payload.types);
+
+  // Tasks 5–8
+  payload.city_demographics  = calcCityDemographics(payload.city, payload.competitor_count, payload.address_detail?.country_code);
+  if (payload.synthetic_pl) {
+    const sectorWage = macroData.median_gross_wage * (INDUSTRY_PARAMS[payload.types.find(t => INDUSTRY_PARAMS[t]) ?? '']?.sector_wage_multiplier ?? 1.0);
+    payload.energy_vulnerability = calcEnergyVulnerability(payload.types, payload.synthetic_pl.facility_sqm, macroData);
+    payload.labor_market         = calcLaborMarketLiquidity(payload.types, macroData, payload.synthetic_pl.fte_estimate, sectorWage);
+  }
 
   return payload;
 }

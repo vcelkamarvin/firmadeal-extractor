@@ -27,6 +27,12 @@ interface CompetitorData { name: string | null; url: string | null; address: str
 interface TimelinePoint { period: string; reviews: number; trends_index: number; }
 interface MacroData { unemployment_pct: number; national_avg_unemployment: number; ppp_index: number; median_gross_wage: number; commercial_rent_per_sqm: number; bundesland: string | null; city: string | null; data_source: string; country_code: string | null; unemployment_history: { month: string; rate: number }[]; }
 interface LaborFriction { index: number; unemployment_pct: number; national_avg_unemployment: number; wage_pressure_flag: boolean; interpretation: string; }
+interface CityDemographics { population: number | null; population_density_per_km2: number | null; market_saturation_index: number | null; gdp_per_capita_eur: number | null; demographic_growth_5y_pct: number | null; trend: 'growing' | 'stable' | 'declining'; data_source: string; interpretation: string; }
+interface SupplyChainRisk { category: string; ppi_index: number; trend: 'rising' | 'stable' | 'falling'; margin_impact_pct: number; }
+interface EnergyVulnerability { energy_dependency_score: number; estimated_annual_kwh: number; estimated_energy_cost_eur: number; energy_as_opex_pct: number; ppi_sensitivity: 'low' | 'medium' | 'high' | 'critical'; supply_chain_risks: SupplyChainRisk[]; high_risk_flag: boolean; overall_risk: 'low' | 'medium' | 'high' | 'critical'; interpretation: string; }
+interface DigitalRiskItem { type: string; severity: 'low' | 'medium' | 'high' | 'critical'; description: string; }
+interface DigitalVulnerability { domain: string | null; ssl_valid: boolean | null; spf_present: boolean | null; dmarc_present: boolean | null; dkim_present: boolean | null; security_headers_score: number; missing_headers: string[]; risk_level: 'low' | 'medium' | 'high' | 'critical'; risks: DigitalRiskItem[]; overall_risk_score: number; }
+interface LaborMarketLiquidity { sector: string; avg_vacancy_days: number; bottleneck_flag: boolean; vacancy_trend: 'improving' | 'stable' | 'worsening'; replacement_cost_per_fte_eur: number; total_replacement_cost_eur: number; fte_count: number; recruitment_friction_score: number; interpretation: string; risk_signals: string[]; }
 interface FinancialRange { low: number; mid: number; high: number; }
 interface CostDriver { name: string; severity: 'low' | 'medium' | 'high' | 'critical'; trend: 'improving' | 'stable' | 'worsening'; description: string; ebitda_impact_pct: number; }
 interface DependencyMatrix { business_model_summary: string; primary_leverage: string; drivers: CostDriver[]; net_ebitda_drag_pct: number; }
@@ -73,6 +79,10 @@ interface ExtractionData {
   spatial_context: SpatialContext | null;
   search_interest: string | null; spot_category: string | null;
   climate_data: ClimateData | null;
+  city_demographics: CityDemographics | null;
+  energy_vulnerability: EnergyVulnerability | null;
+  digital_vulnerability: DigitalVulnerability | null;
+  labor_market: LaborMarketLiquidity | null;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -183,7 +193,7 @@ function MarketTimeline({ points }: { points: TimelinePoint[] }) {
   return (
     <ResponsiveContainer width="100%" height={200}>
       <LineChart data={data} margin={{ top: 8, right: 16, bottom: 20, left: 8 }}>
-        <CartesianGrid stroke="rgba(148,163,184,0.06)" vertical={false} />
+        <CartesianGrid stroke="rgba(0,0,0,0.05)" vertical={false} />
         <XAxis dataKey="period" tick={{ fill: '#444444', fontSize: 9 }} interval={4} angle={-30} textAnchor="end" axisLine={false} tickLine={false} />
         <YAxis domain={[0, 130]} tick={{ fill: '#444444', fontSize: 9 }} axisLine={false} tickLine={false} />
         <Tooltip contentStyle={{ background: '#ffffff', border: '1px solid #e5e5e5', color: '#666666', fontSize: 11 }}
@@ -211,7 +221,7 @@ function RangeBar({ range, formatter = fmtEur, label }: { range: FinancialRange;
           <div style={{ position: 'absolute', left: `${midPct}%`, transform: 'translateX(-50%)', top: -2, width: 10, height: 10, borderRadius: '50%', background: isNegative ? '#f87171' : '#4e9a66', border: '2px solid #0f172a' }} />
         </div>
         <span style={{ fontSize: '0.77rem', color: '#666666', minWidth: 52, fontVariantNumeric: 'tabular-nums' }}>{formatter(range.high)}</span>
-        <span style={{ fontSize: '0.8rem', fontWeight: 700, color: isNegative ? '#f87171' : '#94a3b8', minWidth: 60, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{formatter(range.mid)}</span>
+        <span style={{ fontSize: '0.8rem', fontWeight: 700, color: isNegative ? '#f87171' : '#666666', minWidth: 60, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{formatter(range.mid)}</span>
       </div>
     </div>
   );
@@ -235,7 +245,7 @@ function ProbabilisticRevChart({ pl }: { pl: SyntheticPL }) {
       </div>
       <ResponsiveContainer width="100%" height={220}>
         <ComposedChart data={data} margin={{ top: 8, right: 16, bottom: 4, left: 8 }}>
-          <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
+          <CartesianGrid stroke="rgba(0,0,0,0.04)" vertical={false} />
           <XAxis dataKey="year" tick={{ fill: '#666', fontSize: 10 }} axisLine={false} tickLine={false} />
           <YAxis tickFormatter={fmtEur} tick={{ fill: '#666', fontSize: 10 }} axisLine={false} tickLine={false} width={54} />
           <Tooltip contentStyle={tip} formatter={(v: number, name: string) => [fmtEur(v as number), name === 'bear' ? 'Bear' : name === 'base' ? 'Base' : 'Bull']} />
@@ -284,11 +294,11 @@ function AbstractSpatialMap({ sc, pois, r }: { sc: SpatialContext; pois: PointOf
         Abstract Spatial Context
       </div>
       <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-        <svg width={W} height={H} style={{ background: '#f8f8f8', borderRadius: 12, border: '1px solid rgba(255,255,255,0.06)', flexShrink: 0 }}>
+        <svg width={W} height={H} style={{ background: '#f8f8f8', borderRadius: 12, border: '1px solid rgba(0,0,0,0.08)', flexShrink: 0 }}>
           {/* Distance rings */}
           {[200, 500, 1000].map(m => (
             <circle key={m} cx={CX} cy={CY} r={m * scale}
-              fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth={1}
+              fill="none" stroke="rgba(0,0,0,0.06)" strokeWidth={1}
               strokeDasharray={m === 1000 ? '4 4' : 'none'} />
           ))}
           {/* Ring labels */}
@@ -321,7 +331,7 @@ function AbstractSpatialMap({ sc, pois, r }: { sc: SpatialContext; pois: PointOf
           {sc.city_center_distance_m != null && (
             <>
               <line x1={CX} y1={CY} x2={CX - 40} y2={CY + 30}
-                stroke="rgba(255,255,255,0.18)" strokeWidth={1} strokeDasharray="3 4" />
+                stroke="rgba(0,0,0,0.18)" strokeWidth={1} strokeDasharray="3 4" />
               <text x={CX - 80} y={CY + 42} fontSize={8} fill="rgba(0,0,0,0.35)" fontFamily="Helvetica Neue, sans-serif">
                 City Centre {(sc.city_center_distance_m / 1000).toFixed(1)}km
               </text>
@@ -340,7 +350,7 @@ function AbstractSpatialMap({ sc, pois, r }: { sc: SpatialContext; pois: PointOf
               <span style={{ color: '#888' }}>{sc.nearest_transport.type} ({sc.nearest_transport.distance_m}m)</span>
             </div>
           )}
-          <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 6, marginTop: 2 }}>
+          <div style={{ borderTop: '1px solid rgba(0,0,0,0.08)', paddingTop: 6, marginTop: 2 }}>
             <div style={{ fontSize: '0.68rem', color: '#666', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.06em' }}>POI Categories</div>
             {Object.entries(catColor).map(([cat, col]) => (
               <div key={cat} style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 4 }}>
@@ -384,8 +394,8 @@ function PLRangeTable({ pl }: { pl: SyntheticPL }) {
           <div key={i} className={`pl-table-row${row.bold ? ' pl-table-row-bold' : ''}${row.sub ? ' pl-table-row-sub' : ''}`}
             style={row.accent ? { color: row.accent } : undefined}>
             <span>{row.label}</span>
-            <span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: low < 0 ? '#f87171' : '#94a3b8' }}>{fmtEur(low)}</span>
-            <span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: row.accent ?? (mid < 0 ? '#f87171' : '#94a3b8') }}>{fmtEur(mid)}</span>
+            <span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: low < 0 ? '#f87171' : '#666666' }}>{fmtEur(low)}</span>
+            <span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: row.accent ?? (mid < 0 ? '#f87171' : '#666666') }}>{fmtEur(mid)}</span>
             <span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: high < 0 ? '#f87171' : '#4ade80' }}>{fmtEur(high)}</span>
           </div>
         );
@@ -564,7 +574,7 @@ function PPPBar({ macro }: { macro: MacroData }) {
   return (
     <ResponsiveContainer width="100%" height={100}>
       <BarChart data={data} layout="vertical" margin={{ left: 8, right: 32, top: 4, bottom: 4 }}>
-        <CartesianGrid horizontal={false} stroke="rgba(148,163,184,0.06)" />
+        <CartesianGrid horizontal={false} stroke="rgba(0,0,0,0.05)" />
         <XAxis type="number" domain={[75, 120]} tick={{ fill: '#444444', fontSize: 10 }} axisLine={false} tickLine={false} />
         <YAxis type="category" dataKey="label" tick={{ fill: '#666666', fontSize: 10 }} axisLine={false} tickLine={false} width={80} />
         <ReferenceLine x={100} stroke="rgba(0,0,0,0.18)" strokeDasharray="3 3" />
@@ -590,7 +600,7 @@ function EbitdaBenchmark({ pl }: { pl: SyntheticPL }) {
   return (
     <ResponsiveContainer width="100%" height={130}>
       <BarChart data={data} layout="vertical" margin={{ left: 8, right: 36, top: 4, bottom: 4 }}>
-        <CartesianGrid horizontal={false} stroke="rgba(148,163,184,0.06)" />
+        <CartesianGrid horizontal={false} stroke="rgba(0,0,0,0.05)" />
         <XAxis type="number" tickFormatter={v => `${v}%`} tick={{ fill: '#444444', fontSize: 10 }} axisLine={false} tickLine={false} />
         <YAxis type="category" dataKey="label" tick={{ fill: '#666666', fontSize: 10 }} axisLine={false} tickLine={false} width={54} />
         <ReferenceLine x={pl.industry_avg_ebitda_margin} stroke="rgba(78,154,102,0.3)" strokeDasharray="3 3" />
@@ -632,6 +642,207 @@ function ZoneBadge({ zone }: { zone: string }) {
   return <span style={{ fontSize: '0.77rem', padding: '3px 10px', borderRadius: 20, background: `${color}15`, color, border: `1px solid ${color}30`, fontWeight: 600 }}>{label}</span>;
 }
 
+// ── Risk level helpers ─────────────────────────────────────────────────────────
+
+const RISK_COLOR: Record<string, string> = { low: '#4ade80', medium: '#fbbf24', high: '#fb923c', critical: '#f87171' };
+const RISK_BG:    Record<string, string> = { low: 'rgba(74,222,128,0.07)', medium: 'rgba(251,191,36,0.07)', high: 'rgba(251,146,60,0.07)', critical: 'rgba(248,113,113,0.07)' };
+
+function RiskBadge({ level, label }: { level: string; label?: string }) {
+  const c = RISK_COLOR[level] ?? '#888';
+  return <span style={{ display: 'inline-flex', alignItems: 'center', padding: '3px 10px', borderRadius: 20, fontSize: '0.73rem', fontWeight: 700, background: `${c}18`, color: c, border: `1px solid ${c}35`, letterSpacing: '0.04em', textTransform: 'uppercase' }}>{label ?? level}</span>;
+}
+
+function ScoreBar({ score, color }: { score: number; color: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div style={{ flex: 1, height: 5, background: 'rgba(0,0,0,0.06)', borderRadius: 3 }}>
+        <div style={{ width: `${Math.min(100, score)}%`, height: '100%', background: color, borderRadius: 3, transition: 'width 0.4s ease' }} />
+      </div>
+      <span style={{ fontSize: '0.82rem', fontWeight: 700, color, minWidth: 34, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{score}</span>
+    </div>
+  );
+}
+
+// ── Task 5: City Demographics ──────────────────────────────────────────────────
+
+function CityDemographicsBlock({ cd }: { cd: CityDemographics }) {
+  const trendIcon = cd.trend === 'growing' ? '↑' : cd.trend === 'declining' ? '↓' : '→';
+  const trendColor = cd.trend === 'growing' ? '#4ade80' : cd.trend === 'declining' ? '#f87171' : '#fbbf24';
+  const satColor = (cd.market_saturation_index ?? 0) < 1 ? '#4ade80' : (cd.market_saturation_index ?? 0) < 3 ? '#fbbf24' : '#f87171';
+  return (
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10, marginBottom: 14 }}>
+        {cd.population != null && (
+          <div className="data-cell" style={{ gridColumn: 'span 1' }}>
+            <div className="data-cell-label">City Population</div>
+            <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#111', fontVariantNumeric: 'tabular-nums', lineHeight: 1.2, marginTop: 4 }}>
+              {cd.population.toLocaleString('de-DE')}
+            </div>
+            {cd.population_density_per_km2 != null && <div style={{ fontSize: '0.73rem', color: '#888', marginTop: 2 }}>{cd.population_density_per_km2.toLocaleString('de-DE')}/km²</div>}
+          </div>
+        )}
+        {cd.gdp_per_capita_eur != null && (
+          <DataCell label="GDP per Capita" value={`€${cd.gdp_per_capita_eur.toLocaleString('de-DE')}`} />
+        )}
+        {cd.demographic_growth_5y_pct != null && (
+          <div className="data-cell">
+            <div className="data-cell-label">5Y Population Trend</div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 4 }}>
+              <span style={{ fontSize: '1.1rem', fontWeight: 800, color: trendColor }}>{trendIcon}</span>
+              <span style={{ fontSize: '0.95rem', fontWeight: 700, color: trendColor }}>{cd.demographic_growth_5y_pct > 0 ? '+' : ''}{cd.demographic_growth_5y_pct}%</span>
+            </div>
+          </div>
+        )}
+        {cd.market_saturation_index != null && (
+          <div className="data-cell">
+            <div className="data-cell-label">Market Saturation</div>
+            <div style={{ marginTop: 6 }}>
+              <ScoreBar score={Math.round(cd.market_saturation_index * 20)} color={satColor} />
+              <div style={{ fontSize: '0.73rem', color: '#888', marginTop: 3 }}>{cd.market_saturation_index} rivals per 10k residents</div>
+            </div>
+          </div>
+        )}
+      </div>
+      <ProseBlock text={cd.interpretation} />
+      <div style={{ fontSize: '0.68rem', color: '#aaa', marginTop: 6 }}>Source: {cd.data_source}</div>
+    </div>
+  );
+}
+
+// ── Task 6: Energy & Supply Chain ─────────────────────────────────────────────
+
+function EnergyVulnerabilityBlock({ ev }: { ev: EnergyVulnerability }) {
+  const rc = RISK_COLOR[ev.overall_risk];
+  const rb = RISK_BG[ev.overall_risk];
+  const trendIcon = (t: string) => t === 'rising' ? '↑' : t === 'falling' ? '↓' : '→';
+  const trendColor = (t: string) => t === 'rising' ? '#f87171' : t === 'falling' ? '#4ade80' : '#888';
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', marginBottom: 14, flexWrap: 'wrap' }}>
+        <div style={{ padding: '14px 18px', borderRadius: 10, background: rb, border: `1px solid ${rc}25`, minWidth: 160 }}>
+          <div style={{ fontSize: '0.68rem', color: '#888', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4 }}>Energy Risk</div>
+          <div style={{ fontSize: '1.9rem', fontWeight: 900, color: rc, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{ev.energy_dependency_score}</div>
+          <div style={{ fontSize: '0.7rem', color: '#888', marginTop: 3 }}>/100 exposure score</div>
+          <div style={{ marginTop: 8 }}><RiskBadge level={ev.overall_risk} /></div>
+        </div>
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <DataGrid>
+            <DataCell label="Est. Annual kWh"  value={ev.estimated_annual_kwh.toLocaleString('de-DE')} />
+            <DataCell label="Est. Energy Cost"  value={`€${ev.estimated_energy_cost_eur.toLocaleString('de-DE')}/yr`} />
+            <DataCell label="% of OpEx"         value={<span style={{ color: ev.energy_as_opex_pct > 8 ? '#f87171' : '#666' }}>{ev.energy_as_opex_pct}%</span>} />
+            <DataCell label="PPI Sensitivity"   value={<RiskBadge level={ev.ppi_sensitivity} />} />
+          </DataGrid>
+        </div>
+      </div>
+      {ev.supply_chain_risks.length > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: '0.7rem', color: '#888', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>Supply Chain Inputs — PPI (DE 2020=100)</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {ev.supply_chain_risks.map((r, i) => (
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: '130px 60px 60px 1fr', gap: 8, fontSize: '0.78rem', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid rgba(0,0,0,0.04)' }}>
+                <span style={{ color: '#444', textTransform: 'capitalize' }}>{r.category}</span>
+                <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 700, color: r.ppi_index > 140 ? '#f87171' : r.ppi_index > 120 ? '#fbbf24' : '#4ade80' }}>{r.ppi_index}</span>
+                <span style={{ color: trendColor(r.trend), fontWeight: 600 }}>{trendIcon(r.trend)} {r.trend}</span>
+                <span style={{ color: '#888', fontSize: '0.73rem' }}>−{r.margin_impact_pct}% margin impact</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      <ProseBlock text={ev.interpretation} />
+    </div>
+  );
+}
+
+// ── Task 7: Digital Vulnerability ─────────────────────────────────────────────
+
+function DigitalVulnerabilityBlock({ dv }: { dv: DigitalVulnerability }) {
+  const rc = RISK_COLOR[dv.risk_level];
+  const rb = RISK_BG[dv.risk_level];
+  const sevColor = (s: string) => RISK_COLOR[s] ?? '#888';
+  const Check = ({ ok, label }: { ok: boolean | null; label: string }) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid rgba(0,0,0,0.04)' }}>
+      <span style={{ fontSize: '0.9rem', color: ok === null ? '#aaa' : ok ? '#4ade80' : '#f87171', width: 16 }}>{ok === null ? '?' : ok ? '✓' : '✗'}</span>
+      <span style={{ fontSize: '0.8rem', color: '#444', flex: 1 }}>{label}</span>
+      <span style={{ fontSize: '0.72rem', fontWeight: 600, color: ok === null ? '#aaa' : ok ? '#4ade80' : '#f87171' }}>{ok === null ? 'unknown' : ok ? 'pass' : 'fail'}</span>
+    </div>
+  );
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', marginBottom: 14, flexWrap: 'wrap' }}>
+        <div style={{ padding: '14px 18px', borderRadius: 10, background: rb, border: `1px solid ${rc}25`, minWidth: 160 }}>
+          <div style={{ fontSize: '0.68rem', color: '#888', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4 }}>Risk Score</div>
+          <div style={{ fontSize: '1.9rem', fontWeight: 900, color: rc, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{dv.overall_risk_score}</div>
+          <div style={{ fontSize: '0.7rem', color: '#888', marginTop: 3 }}>/100 threat exposure</div>
+          <div style={{ marginTop: 8 }}><RiskBadge level={dv.risk_level} /></div>
+        </div>
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <div style={{ fontSize: '0.7rem', color: '#888', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 6 }}>Security Checklist</div>
+          <Check ok={dv.ssl_valid}    label="SSL / TLS Certificate" />
+          <Check ok={dv.spf_present}  label="SPF Record (email spoofing protection)" />
+          <Check ok={dv.dmarc_present} label="DMARC Policy (fraud visibility)" />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid rgba(0,0,0,0.04)' }}>
+            <span style={{ fontSize: '0.9rem', color: dv.security_headers_score >= 75 ? '#4ade80' : dv.security_headers_score >= 50 ? '#fbbf24' : '#f87171', width: 16 }}>◉</span>
+            <span style={{ fontSize: '0.8rem', color: '#444', flex: 1 }}>Security Headers ({dv.security_headers_score}%)</span>
+          </div>
+          {dv.domain && <div style={{ fontSize: '0.72rem', color: '#999', marginTop: 6 }}>Domain: {dv.domain}</div>}
+        </div>
+      </div>
+      {dv.risks.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {dv.risks.map((r, i) => (
+            <div key={i} style={{ padding: '10px 12px', borderRadius: 8, background: `${sevColor(r.severity)}08`, border: `1px solid ${sevColor(r.severity)}20` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <RiskBadge level={r.severity} />
+                <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#222' }}>{r.type}</span>
+              </div>
+              <p style={{ margin: 0, fontSize: '0.78rem', color: '#666', lineHeight: 1.55 }}>{r.description}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Task 8: Labor Market Liquidity ─────────────────────────────────────────────
+
+function LaborMarketBlock({ lm }: { lm: LaborMarketLiquidity }) {
+  const fc = lm.bottleneck_flag ? '#f87171' : lm.avg_vacancy_days > 38 ? '#fbbf24' : '#4ade80';
+  const trendColor = lm.vacancy_trend === 'worsening' ? '#f87171' : lm.vacancy_trend === 'improving' ? '#4ade80' : '#fbbf24';
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', marginBottom: 14, flexWrap: 'wrap' }}>
+        <div style={{ padding: '14px 18px', borderRadius: 10, background: `${fc}0d`, border: `1px solid ${fc}25`, minWidth: 160 }}>
+          <div style={{ fontSize: '0.68rem', color: '#888', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4 }}>Avg. Vacancy Days</div>
+          <div style={{ fontSize: '2.1rem', fontWeight: 900, color: fc, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{lm.avg_vacancy_days}</div>
+          <div style={{ fontSize: '0.7rem', color: '#888', marginTop: 3 }}>days to fill a role</div>
+          {lm.bottleneck_flag && <div style={{ marginTop: 8 }}><RiskBadge level="critical" label="Bottleneck" /></div>}
+        </div>
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <DataGrid>
+            <DataCell label="Sector" value={<span style={{ textTransform: 'capitalize' }}>{lm.sector}</span>} />
+            <DataCell label="Vacancy Trend" value={<span style={{ color: trendColor, fontWeight: 700 }}>{lm.vacancy_trend}</span>} />
+            <DataCell label="Replacement / FTE" value={`€${lm.replacement_cost_per_fte_eur.toLocaleString('de-DE')}`} />
+            <DataCell label="Total Replacement" value={<span style={{ fontWeight: 700, color: lm.total_replacement_cost_eur > 15000 ? '#f87171' : '#666' }}>€{lm.total_replacement_cost_eur.toLocaleString('de-DE')}</span>} />
+            <DataCell label="FTE Count" value={lm.fte_count} />
+          </DataGrid>
+          <div style={{ marginTop: 8 }}>
+            <div style={{ fontSize: '0.7rem', color: '#888', marginBottom: 5 }}>Recruitment Friction</div>
+            <ScoreBar score={lm.recruitment_friction_score} color={fc} />
+          </div>
+        </div>
+      </div>
+      <ProseBlock text={lm.interpretation} />
+      {lm.risk_signals.length > 0 && (
+        <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {lm.risk_signals.map((s, i) => <div key={i} style={{ fontSize: '0.77rem', color: '#f87171', display: 'flex', gap: 6 }}><span>⚠</span><span>{s}</span></div>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Result card ────────────────────────────────────────────────────────────────
 
 function ResultCard({ r }: { r: ExtractionData }) {
@@ -648,6 +859,10 @@ function ResultCard({ r }: { r: ExtractionData }) {
   const mt  = r.market_timeline ?? [];
   const sc  = r.spatial_context;
   const cd  = r.climate_data;
+  const dem = r.city_demographics;
+  const ev  = r.energy_vulnerability;
+  const dv  = r.digital_vulnerability;
+  const lm  = r.labor_market;
 
   const coords = r.latitude != null && r.longitude != null ? `${r.latitude.toFixed(6)}, ${r.longitude.toFixed(6)}` : null;
   const statusColor = r.business_status === 'OPERATIONAL' ? '#4ade80' : r.business_status === 'CLOSED_TEMPORARILY' ? '#facc15' : '#f87171';
@@ -1020,8 +1235,8 @@ function ResultCard({ r }: { r: ExtractionData }) {
             <DataCell label="Rev / Employee" value={fmtEur(pl.revenue_per_employee)} />
             <DataCell label="Benchmark Rev/FTE" value={fmtEur(pl.sanity_check.rev_per_employee_benchmark)} />
             <DataCell label="Ratio" value={<span style={{ color: pl.sanity_check.overheated ? '#f87171' : '#4ade80', fontWeight: 700 }}>{pl.sanity_check.ratio}×</span>} />
-            {pl.rent_as_revenue_pct != null && <DataCell label="Rent / Revenue" value={<span style={{ color: pl.rent_as_revenue_pct > 12 ? '#f87171' : '#94a3b8' }}>{pl.rent_as_revenue_pct.toFixed(1)}%</span>} />}
-            {pl.personnel_as_revenue_pct != null && <DataCell label="Personnel / Revenue" value={<span style={{ color: pl.personnel_as_revenue_pct > 35 ? '#f87171' : '#94a3b8' }}>{pl.personnel_as_revenue_pct.toFixed(1)}%</span>} />}
+            {pl.rent_as_revenue_pct != null && <DataCell label="Rent / Revenue" value={<span style={{ color: pl.rent_as_revenue_pct > 12 ? '#f87171' : '#666666' }}>{pl.rent_as_revenue_pct.toFixed(1)}%</span>} />}
+            {pl.personnel_as_revenue_pct != null && <DataCell label="Personnel / Revenue" value={<span style={{ color: pl.personnel_as_revenue_pct > 35 ? '#f87171' : '#666666' }}>{pl.personnel_as_revenue_pct.toFixed(1)}%</span>} />}
             <DataCell label="Fixed Cost Ratio" value={<span style={{ color: pl.fixed_cost_ratio > 80 ? '#f87171' : pl.fixed_cost_ratio > 65 ? '#fbbf24' : '#4ade80', fontWeight: 700 }}>{pl.fixed_cost_ratio}% of gross profit</span>} />
             <DataCell label="Breakeven Revenue" value={fmtEur(pl.breakeven_revenue)} />
             <DataCell label="Total Fixed Costs" value={fmtEur(pl.total_fixed_costs)} />
@@ -1126,6 +1341,43 @@ function ResultCard({ r }: { r: ExtractionData }) {
           </div>
         </>
       )}
+
+      {/* ═══ CITY DEMOGRAPHICS ═══ */}
+      {dem && (
+        <>
+          <SectionLabel>City Demographics & Market Sizing</SectionLabel>
+          <CityDemographicsBlock cd={dem} />
+          <Divider />
+        </>
+      )}
+
+      {/* ═══ ENERGY & SUPPLY CHAIN ═══ */}
+      {ev && (
+        <>
+          <SectionLabel>Energy & Supply Chain Vulnerability</SectionLabel>
+          <EnergyVulnerabilityBlock ev={ev} />
+          <Divider />
+        </>
+      )}
+
+      {/* ═══ DIGITAL VULNERABILITY ═══ */}
+      {dv && (
+        <>
+          <SectionLabel>Digital Infrastructure Risk</SectionLabel>
+          <DigitalVulnerabilityBlock dv={dv} />
+          <Divider />
+        </>
+      )}
+
+      {/* ═══ LABOR MARKET LIQUIDITY ═══ */}
+      {lm && (
+        <>
+          <SectionLabel>Labor Market Liquidity & Replacement Cost</SectionLabel>
+          <LaborMarketBlock lm={lm} />
+          <Divider />
+        </>
+      )}
+
     </div>
   );
 }
