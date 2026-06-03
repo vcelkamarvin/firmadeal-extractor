@@ -168,6 +168,34 @@ export interface LaborMarketLiquidity {
   interpretation: string; risk_signals: string[];
 }
 
+// ── Task 9–10 interfaces ──────────────────────────────────────────────────────
+
+export interface KfwEligibility {
+  eligible: boolean;
+  country_check: boolean;
+  sme_check: boolean;
+  industry_check: boolean;
+  program: 'ERP-Gründerkredit Universell' | 'KfW Unternehmerkredit' | null;
+  program_description: string | null;
+  failed_rules: string[];
+  revenue_mid_eur: number | null;
+  fte_estimate: number | null;
+  estimated_age_years: number | null;
+  notes: string[];
+}
+
+export interface MonthlyReviewBucket { month: string; count: number; normalized: number; }
+
+export interface SeasonalityProfile {
+  monthly_buckets: MonthlyReviewBucket[];
+  seasonality_coefficient: number;
+  high_risk_flag: boolean;
+  peak_month: string | null;
+  trough_month: string | null;
+  interpretation: string;
+  risk_label: 'Low Seasonality' | 'Moderate Seasonality' | 'High Seasonality Risk';
+}
+
 // ── Payload ────────────────────────────────────────────────────────────────────
 
 export interface ExtractionPayload {
@@ -202,6 +230,8 @@ export interface ExtractionPayload {
   energy_vulnerability: EnergyVulnerability | null;
   digital_vulnerability: DigitalVulnerability | null;
   labor_market: LaborMarketLiquidity | null;
+  kfw_eligibility: KfwEligibility | null;
+  seasonality_profile: SeasonalityProfile | null;
 }
 
 // ── Industry economics (expanded) ─────────────────────────────────────────────
@@ -1121,6 +1151,93 @@ function calcLaborMarketLiquidity(types: string[], macroData: MacroData, fte: nu
   return { sector: pt, avg_vacancy_days: vacDays, bottleneck_flag: bottleneck, vacancy_trend: lp.trend, replacement_cost_per_fte_eur: repCostFte, total_replacement_cost_eur: repCostTotal, fte_count: fte, recruitment_friction_score: frictionScore, interpretation: interp, risk_signals: signals };
 }
 
+// ── Task 9: KfW Financing Eligibility ─────────────────────────────────────────
+
+const KFW_FORBIDDEN_TYPES = ['casino', 'gambling', 'tobacco', 'cigarettes', 'military', 'arms_dealer', 'adult_entertainment'];
+
+function calcKfwEligibility(countryCode: string | null, types: string[], pl: SyntheticPL | null): KfwEligibility {
+  const failed: string[] = [];
+  const notes: string[] = [];
+
+  const countryCheck = countryCode === 'DE';
+  if (!countryCheck) failed.push(`Geography (Rule A): country "${countryCode ?? 'unknown'}" is not DE — KfW programs are exclusively for German businesses`);
+
+  const revMid = pl?.revenue.mid ?? null;
+  const fte = pl?.fte_estimate ?? null;
+  const revOk = revMid != null ? revMid < 50_000_000 : true;
+  const fteOk = fte != null ? fte < 250 : true;
+  const smeCheck = revOk && fteOk;
+  if (!revOk && revMid != null) failed.push(`SME Revenue (Rule B): €${(revMid / 1_000_000).toFixed(1)}M exceeds SME ceiling of €50M`);
+  if (!fteOk && fte != null)    failed.push(`SME Headcount (Rule B): ${fte} FTE exceeds SME ceiling of 250 FTE`);
+
+  const typesLower = types.map(t => t.toLowerCase());
+  const hit = KFW_FORBIDDEN_TYPES.find(kw => typesLower.some(t => t.includes(kw)));
+  const industryCheck = !hit;
+  if (!industryCheck) failed.push(`Industry Restriction (Rule C): business type contains "${hit}" — excluded from KfW programs`);
+
+  const age = pl?.estimated_age_years ?? null;
+  let program: KfwEligibility['program'] = null;
+  let programDesc: string | null = null;
+  if (countryCheck && smeCheck && industryCheck) {
+    if (age !== null && age < 5) {
+      program = 'ERP-Gründerkredit Universell';
+      programDesc = 'For businesses under 5 years. Up to €100M for investments and working capital. Fixed interest from 4.5% p.a., up to 100% financing of eligible project costs. Suitable for acquisition of young SMEs within 5 years of formation.';
+    } else {
+      program = 'KfW Unternehmerkredit';
+      programDesc = 'For established businesses (5+ years). Up to €25M per project. Long-term fixed rates with house bank risk retention. Covers investments and working capital, including business acquisitions and succession financing.';
+    }
+    notes.push(`Estimated business age ${age ?? 'unknown'} years → mapped to ${program}.`);
+  }
+  if (revMid != null) notes.push(`Synthetic base revenue €${Math.round(revMid / 1000).toLocaleString('de-DE')}k — ${revOk ? 'within' : 'exceeds'} SME ceiling.`);
+  if (fte != null)    notes.push(`${fte} FTE — ${fteOk ? 'within' : 'exceeds'} 250 FTE threshold.`);
+  if (!countryCheck)  notes.push('KfW eligibility does not apply outside Germany.');
+
+  return { eligible: countryCheck && smeCheck && industryCheck, country_check: countryCheck, sme_check: smeCheck, industry_check: industryCheck, program, program_description: programDesc, failed_rules: failed, revenue_mid_eur: revMid, fte_estimate: fte, estimated_age_years: age, notes };
+}
+
+// ── Task 10: Seasonality Volatility Engine ────────────────────────────────────
+
+const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function calcSeasonalityProfile(rawReviews: any[]): SeasonalityProfile {
+  const buckets = new Array(12).fill(0);
+  let datedCount = 0;
+  for (const rv of rawReviews) {
+    const t = rv.publishTime;
+    if (!t) continue;
+    const d = new Date(t);
+    if (isNaN(d.getTime())) continue;
+    buckets[d.getMonth()]++;
+    datedCount++;
+  }
+  const mean = datedCount > 0 ? datedCount / 12 : 1;
+  const variance = buckets.reduce((s, v) => s + (v - mean) ** 2, 0) / 12;
+  const coeff = mean > 0 ? Math.round((Math.sqrt(variance) / mean) * 1000) / 1000 : 0;
+  const maxCount = Math.max(...buckets, 1);
+  const monthly: MonthlyReviewBucket[] = buckets.map((count, i) => ({ month: MONTH_LABELS[i], count, normalized: Math.round((count / maxCount) * 100) }));
+  const peakIdx   = buckets.indexOf(Math.max(...buckets));
+  const troughIdx = buckets.indexOf(Math.min(...buckets));
+  const peakMonth   = datedCount > 2 ? MONTH_LABELS[peakIdx]   : null;
+  const troughMonth = datedCount > 2 ? MONTH_LABELS[troughIdx] : null;
+  const highRisk = coeff > 0.35;
+  let riskLabel: SeasonalityProfile['risk_label'];
+  let interp: string;
+  if (datedCount < 5) {
+    riskLabel = 'Moderate Seasonality';
+    interp = `Insufficient timestamped reviews for statistical analysis (${datedCount} dated out of ${rawReviews.length}). Seasonality classified as moderate — assess sector benchmarks for cash flow planning.`;
+  } else if (coeff > 0.35) {
+    riskLabel = 'High Seasonality Risk';
+    interp = `High Seasonality Risk — Coefficient ${coeff.toFixed(2)} (threshold 0.35). Peak demand: ${peakMonth}, slowest month: ${troughMonth}. Monthly activity varies ${Math.round(coeff * 100)}% around mean. Investors must model working capital shortfalls during off-peak periods; minimum 3-month fixed-cost cash reserve is recommended.`;
+  } else if (coeff > 0.20) {
+    riskLabel = 'Moderate Seasonality';
+    interp = `Moderate seasonality — Coefficient ${coeff.toFixed(2)}. Peak: ${peakMonth}, trough: ${troughMonth}. Revenue fluctuates but remains manageable. A 6–8 week fixed-cost reserve and monthly cash flow monitoring are sufficient safeguards.`;
+  } else {
+    riskLabel = 'Low Seasonality';
+    interp = `Low seasonality — Coefficient ${coeff.toFixed(2)}. Review activity is broadly stable across the calendar year. No material seasonal cash flow risk identified.`;
+  }
+  return { monthly_buckets: monthly, seasonality_coefficient: coeff, high_risk_flag: highRisk, peak_month: peakMonth, trough_month: troughMonth, interpretation: interp, risk_label: riskLabel };
+}
+
 // ── Spatial context ───────────────────────────────────────────────────────────
 
 function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -1460,6 +1577,7 @@ async function extractFromUrl(inputUrl: string): Promise<ExtractionPayload> {
     industry_economics: null, spatial_context: null, climate_data: null,
     search_interest: null, spot_category: null,
     city_demographics: null, energy_vulnerability: null, digital_vulnerability: null, labor_market: null,
+    kfw_eligibility: null, seasonality_profile: null,
   };
 
   const fullUrl = await resolveUrl(inputUrl);
@@ -1553,6 +1671,10 @@ async function extractFromUrl(inputUrl: string): Promise<ExtractionPayload> {
     payload.energy_vulnerability = calcEnergyVulnerability(payload.types, payload.synthetic_pl.facility_sqm, macroData);
     payload.labor_market         = calcLaborMarketLiquidity(payload.types, macroData, payload.synthetic_pl.fte_estimate, sectorWage);
   }
+
+  // Tasks 9–10
+  payload.kfw_eligibility     = calcKfwEligibility(payload.address_detail?.country_code ?? null, payload.types, payload.synthetic_pl);
+  payload.seasonality_profile = calcSeasonalityProfile(rawReviews);
 
   return payload;
 }

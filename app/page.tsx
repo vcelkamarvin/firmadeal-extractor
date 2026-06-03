@@ -33,6 +33,9 @@ interface EnergyVulnerability { energy_dependency_score: number; estimated_annua
 interface DigitalRiskItem { type: string; severity: 'low' | 'medium' | 'high' | 'critical'; description: string; }
 interface DigitalVulnerability { domain: string | null; ssl_valid: boolean | null; spf_present: boolean | null; dmarc_present: boolean | null; dkim_present: boolean | null; security_headers_score: number; missing_headers: string[]; risk_level: 'low' | 'medium' | 'high' | 'critical'; risks: DigitalRiskItem[]; overall_risk_score: number; }
 interface LaborMarketLiquidity { sector: string; avg_vacancy_days: number; bottleneck_flag: boolean; vacancy_trend: 'improving' | 'stable' | 'worsening'; replacement_cost_per_fte_eur: number; total_replacement_cost_eur: number; fte_count: number; recruitment_friction_score: number; interpretation: string; risk_signals: string[]; }
+interface KfwEligibility { eligible: boolean; country_check: boolean; sme_check: boolean; industry_check: boolean; program: 'ERP-Gründerkredit Universell' | 'KfW Unternehmerkredit' | null; program_description: string | null; failed_rules: string[]; revenue_mid_eur: number | null; fte_estimate: number | null; estimated_age_years: number | null; notes: string[]; }
+interface MonthlyReviewBucket { month: string; count: number; normalized: number; }
+interface SeasonalityProfile { monthly_buckets: MonthlyReviewBucket[]; seasonality_coefficient: number; high_risk_flag: boolean; peak_month: string | null; trough_month: string | null; interpretation: string; risk_label: 'Low Seasonality' | 'Moderate Seasonality' | 'High Seasonality Risk'; }
 interface FinancialRange { low: number; mid: number; high: number; }
 interface CostDriver { name: string; severity: 'low' | 'medium' | 'high' | 'critical'; trend: 'improving' | 'stable' | 'worsening'; description: string; ebitda_impact_pct: number; }
 interface DependencyMatrix { business_model_summary: string; primary_leverage: string; drivers: CostDriver[]; net_ebitda_drag_pct: number; }
@@ -83,6 +86,8 @@ interface ExtractionData {
   energy_vulnerability: EnergyVulnerability | null;
   digital_vulnerability: DigitalVulnerability | null;
   labor_market: LaborMarketLiquidity | null;
+  kfw_eligibility: KfwEligibility | null;
+  seasonality_profile: SeasonalityProfile | null;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -843,6 +848,111 @@ function LaborMarketBlock({ lm }: { lm: LaborMarketLiquidity }) {
   );
 }
 
+// ── Task 9: KfW Eligibility ────────────────────────────────────────────────────
+
+function KfwEligibilityBlock({ kfw }: { kfw: KfwEligibility }) {
+  const Rule = ({ passed, label }: { passed: boolean; label: string }) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, background: passed ? 'rgba(29,185,84,0.04)' : 'rgba(248,113,113,0.04)', border: `1px solid ${passed ? 'rgba(34,197,94,0.15)' : 'rgba(248,113,113,0.15)'}` }}>
+      <span style={{ fontSize: '0.9rem', color: passed ? '#4ade80' : '#f87171', width: 18 }}>{passed ? '✓' : '✗'}</span>
+      <span style={{ fontSize: '0.8rem', color: '#444', flex: 1 }}>{label}</span>
+      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: passed ? '#4ade80' : '#f87171' }}>{passed ? 'PASS' : 'FAIL'}</span>
+    </div>
+  );
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', marginBottom: 16, flexWrap: 'wrap' }}>
+        <div style={{ padding: '14px 18px', borderRadius: 10, background: kfw.eligible ? 'rgba(29,185,84,0.05)' : 'rgba(248,113,113,0.04)', border: `1px solid ${kfw.eligible ? 'rgba(34,197,94,0.2)' : 'rgba(248,113,113,0.15)'}`, minWidth: 160, textAlign: 'center' }}>
+          <div style={{ fontSize: '2rem', marginBottom: 4 }}>{kfw.eligible ? '✅' : '❌'}</div>
+          <div style={{ fontWeight: 800, fontSize: '0.9rem', color: kfw.eligible ? '#4ade80' : '#f87171' }}>{kfw.eligible ? 'Eligible' : 'Not Eligible'}</div>
+          <div style={{ fontSize: '0.72rem', color: '#888', marginTop: 3 }}>KfW Acquisition Finance</div>
+        </div>
+        <div style={{ flex: 1, minWidth: 220 }}>
+          {kfw.program && (
+            <div style={{ padding: '12px 14px', borderRadius: 8, background: 'rgba(29,185,84,0.04)', border: '1px solid rgba(34,197,94,0.15)', marginBottom: 12 }}>
+              <div style={{ fontSize: '0.68rem', color: '#4e9a66', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4 }}>Qualifying Program</div>
+              <div style={{ fontWeight: 800, fontSize: '0.92rem', color: '#222', marginBottom: 6 }}>{kfw.program}</div>
+              {kfw.program_description && <p style={{ margin: 0, fontSize: '0.76rem', color: '#666', lineHeight: 1.55 }}>{kfw.program_description}</p>}
+            </div>
+          )}
+          <DataGrid>
+            {kfw.revenue_mid_eur != null && <DataCell label="Base Revenue" value={kfw.revenue_mid_eur >= 1_000_000 ? `€${(kfw.revenue_mid_eur / 1_000_000).toFixed(1)}M` : `€${Math.round(kfw.revenue_mid_eur / 1000)}k`} />}
+            {kfw.fte_estimate != null && <DataCell label="FTE Estimate" value={String(kfw.fte_estimate)} />}
+            {kfw.estimated_age_years != null && <DataCell label="Business Age" value={`${kfw.estimated_age_years} years`} />}
+          </DataGrid>
+        </div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+        <Rule passed={kfw.country_check} label="Rule A — Geography: German address (country code DE)" />
+        <Rule passed={kfw.sme_check} label="Rule B — SME Thresholds: Revenue < €50M · Headcount < 250 FTE" />
+        <Rule passed={kfw.industry_check} label="Rule C — Industry: Not in restricted sectors (gambling, tobacco, military)" />
+      </div>
+      {kfw.failed_rules.length > 0 && (
+        <div style={{ marginBottom: 10 }}>
+          {kfw.failed_rules.map((fr, i) => (
+            <div key={i} style={{ fontSize: '0.77rem', color: '#f87171', display: 'flex', gap: 6, marginBottom: 4 }}>
+              <span>⚠</span><span>{fr}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {kfw.notes.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          {kfw.notes.map((n, i) => (
+            <div key={i} style={{ fontSize: '0.76rem', color: '#666', display: 'flex', gap: 6 }}>
+              <span style={{ color: '#4e9a66' }}>→</span><span>{n}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Task 10: Seasonality Volatility ───────────────────────────────────────────
+
+function SeasonalityChart({ sp }: { sp: SeasonalityProfile }) {
+  const riskColor = sp.risk_label === 'High Seasonality Risk' ? '#f87171' : sp.risk_label === 'Moderate Seasonality' ? '#fbbf24' : '#4ade80';
+  const total = sp.monthly_buckets.reduce((s, b) => s + b.count, 0);
+  const meanCount = Number((total / 12).toFixed(1));
+  const chartData = sp.monthly_buckets.map(b => ({ ...b, mean: meanCount }));
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', marginBottom: 16, flexWrap: 'wrap' }}>
+        <div style={{ padding: '14px 18px', borderRadius: 10, background: `${riskColor}0d`, border: `1px solid ${riskColor}25`, minWidth: 160 }}>
+          <div style={{ fontSize: '0.68rem', color: '#888', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4 }}>Seasonality Coefficient</div>
+          <div style={{ fontSize: '2.1rem', fontWeight: 900, color: riskColor, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{sp.seasonality_coefficient.toFixed(2)}</div>
+          <div style={{ fontSize: '0.7rem', color: '#888', marginTop: 3 }}>σ / μ · threshold 0.35</div>
+          <div style={{ marginTop: 8, display: 'inline-flex', padding: '2px 8px', borderRadius: 12, background: `${riskColor}1a`, border: `1px solid ${riskColor}30`, fontSize: '0.7rem', fontWeight: 700, color: riskColor }}>{sp.risk_label}</div>
+        </div>
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <DataGrid>
+            {sp.peak_month && <DataCell label="Peak Month" value={<span style={{ color: '#4e9a66', fontWeight: 700 }}>{sp.peak_month}</span>} />}
+            {sp.trough_month && <DataCell label="Slowest Month" value={<span style={{ color: '#f87171', fontWeight: 700 }}>{sp.trough_month}</span>} />}
+            <DataCell label="Dated Reviews" value={total.toString()} />
+            <DataCell label="High Risk Flag" value={<span style={{ color: sp.high_risk_flag ? '#f87171' : '#4ade80', fontWeight: 700 }}>{sp.high_risk_flag ? '⚠ Yes' : '✓ No'}</span>} />
+          </DataGrid>
+        </div>
+      </div>
+      <div style={{ height: 160, marginBottom: 8 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: -24 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.05)" vertical={false} />
+            <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#888' }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fontSize: 10, fill: '#888' }} axisLine={false} tickLine={false} allowDecimals={false} />
+            <Tooltip contentStyle={{ background: '#ffffff', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 8, fontSize: '0.78rem' }} labelStyle={{ color: '#333', fontWeight: 700 }} />
+            <Bar dataKey="count" name="Reviews" fill={`${riskColor}66`} radius={[3, 3, 0, 0]} />
+            <Line dataKey="mean" name="Monthly Mean" stroke="#aaaaaa" strokeWidth={1.5} strokeDasharray="4 2" dot={false} />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+      <div style={{ fontSize: '0.68rem', color: '#aaa', marginBottom: 10 }}>
+        Monthly review distribution (timestamped reviews only) · Dashed = monthly mean
+      </div>
+      <ProseBlock text={sp.interpretation} />
+    </div>
+  );
+}
+
 // ── Result card ────────────────────────────────────────────────────────────────
 
 function ResultCard({ r }: { r: ExtractionData }) {
@@ -863,6 +973,8 @@ function ResultCard({ r }: { r: ExtractionData }) {
   const ev  = r.energy_vulnerability;
   const dv  = r.digital_vulnerability;
   const lm  = r.labor_market;
+  const kfw = r.kfw_eligibility;
+  const sp  = r.seasonality_profile;
 
   const coords = r.latitude != null && r.longitude != null ? `${r.latitude.toFixed(6)}, ${r.longitude.toFixed(6)}` : null;
   const statusColor = r.business_status === 'OPERATIONAL' ? '#4ade80' : r.business_status === 'CLOSED_TEMPORARILY' ? '#facc15' : '#f87171';
@@ -899,6 +1011,208 @@ function ResultCard({ r }: { r: ExtractionData }) {
 
       <Divider />
 
+      {/* ═══ INDUSTRY ECONOMICS ═══ */}
+      {eco && (
+        <>
+          <SectionLabel>Industry Economics — {eco.industry_label}</SectionLabel>
+          <DataGrid style={{ marginBottom: 14 }}>
+            <DataCell label="EBITDA Multiple" value={`${eco.ebitda_multiple.low}× – ${eco.ebitda_multiple.mid}× – ${eco.ebitda_multiple.high}×`} />
+            {eco.avg_margin_pct != null && <DataCell label="Avg EBITDA Margin" value={`${eco.avg_margin_pct}%`} />}
+            {eco.market_size_de_bn != null && <DataCell label="Market Size (DE)" value={`€${eco.market_size_de_bn} Mrd.`} />}
+            {eco.cagr_5y_pct != null && <DataCell label="5Y CAGR" value={`${eco.cagr_5y_pct}%`} />}
+          </DataGrid>
+          <p style={{ margin: '0 0 14px', fontSize: '0.82rem', color: '#888888', lineHeight: 1.6 }}>{eco.trend_summary}</p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 10, marginBottom: 16 }}>
+            {[
+              { title: 'Structural Margins', text: eco.structural_margins },
+              { title: 'Business Model Mechanics', text: eco.model_mechanics },
+              { title: 'Failure Rate & Risk', text: eco.failure_rate_note },
+            ].map(({ title, text }) => (
+              <div key={title} style={{ padding: '12px 14px', borderRadius: 8, background: 'rgba(0,0,0,0.03)', border: '1px solid rgba(0,0,0,0.06)' }}>
+                <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#4e9a66', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 6 }}>{title}</div>
+                <p style={{ margin: 0, fontSize: '0.79rem', color: '#666666', lineHeight: 1.6 }}>{text}</p>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {eco.yearly.map((y, i) => (
+              <div key={i} style={{ display: 'flex', gap: 12, fontSize: '0.78rem', lineHeight: 1.6 }}>
+                <span style={{ color: '#4e9a66', fontWeight: 700, minWidth: 36, fontVariantNumeric: 'tabular-nums' }}>{y.year}</span>
+                <span style={{ color: '#444444' }}>{y.context}</span>
+              </div>
+            ))}
+          </div>
+          <Divider />
+        </>
+      )}
+
+      {/* ═══ BUSINESS MODEL & COST DRIVERS ═══ */}
+      {pl && (
+        <>
+          <SectionLabel>Business Model & Cost Drivers</SectionLabel>
+          <DependencyMatrixBlock dm={pl.dependency_matrix} />
+          <Divider />
+        </>
+      )}
+
+      {/* ═══ MACRO ═══ */}
+      {md && lf && (
+        <>
+          <SectionLabel>Regional Macroeconomics</SectionLabel>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(140px, 170px) 1fr', gap: 16, alignItems: 'center', marginBottom: 14 }}>
+            <LFIGauge index={lf.index} />
+            <div>
+              <ProseBlock text={lf.interpretation} />
+              <DataGrid style={{ marginTop: 10 }}>
+                <DataCell label="Local Unemployment" value={<span style={{ color: lf.unemployment_pct > lf.national_avg_unemployment ? '#f87171' : '#4ade80', fontWeight: 700 }}>{lf.unemployment_pct}%</span>} />
+                <DataCell label="National Avg" value={`${lf.national_avg_unemployment}%`} />
+                <DataCell label="Wage Pressure" value={<span style={{ color: lf.wage_pressure_flag ? '#fbbf24' : '#4ade80' }}>{lf.wage_pressure_flag ? 'Elevated' : 'Normal'}</span>} />
+              </DataGrid>
+            </div>
+          </div>
+          <DataGrid style={{ marginBottom: 14 }}>
+            {md.bundesland && <DataCell label="Bundesland" value={md.bundesland} />}
+            {md.city && <DataCell label="City" value={md.city} />}
+            <DataCell label="Median Gross Wage" value={`€${md.median_gross_wage.toLocaleString('de-DE')} p.a.`} />
+            <DataCell label="Commercial Rent" value={`€${md.commercial_rent_per_sqm}/m²/mo`} />
+            <DataCell label="PPP Index" value={<span style={{ color: md.ppp_index >= 100 ? '#4ade80' : '#f87171', fontWeight: 700 }}>{md.ppp_index.toFixed(1)}</span>} />
+          </DataGrid>
+          <div style={{ marginBottom: 4 }}>
+            <div style={{ fontSize: '0.7rem', color: '#999999', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>Purchasing Power vs National Average (100)</div>
+            <PPPBar macro={md} />
+          </div>
+          <UnemploymentTrendChart md={md} mt={mt} />
+          <Divider />
+        </>
+      )}
+
+      {/* ═══ SYNTHETIC P&L ═══ */}
+      {pl && (
+        <>
+          <SectionLabel>Synthetic P&L — Probabilistic Estimate</SectionLabel>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+            {[
+              { k: 'Est. Age', v: `${pl.estimated_age_years}y` },
+              { k: 'FTE', v: String(pl.fte_estimate) },
+              { k: 'Avg Basket', v: `€${pl.adjusted_basket_eur.toFixed(0)}` },
+              { k: 'Capture Rate', v: `${pl.capture_rate_optimistic}% – ${pl.capture_rate_expected}% – ${pl.capture_rate_pessimistic}%` },
+              { k: 'Gross Margin', v: `${pl.gross_margin_pct}%` },
+            ].map(({ k, v }) => (
+              <div key={k} style={{ padding: '6px 12px', borderRadius: 6, background: 'rgba(78,154,102,0.06)', border: '1px solid rgba(78,154,102,0.1)' }}>
+                <div style={{ fontSize: '0.68rem', color: '#444444', marginBottom: 2 }}>{k}</div>
+                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#888888', fontVariantNumeric: 'tabular-nums' }}>{v}</div>
+              </div>
+            ))}
+          </div>
+          {pl.sanity_check.overheated && <div style={{ marginBottom: 12 }}><SanityBadge sc={pl.sanity_check} /></div>}
+          <ProbabilisticRevChart pl={pl} />
+          <PLRangeTable pl={pl} />
+          <div style={{ marginTop: 16, marginBottom: 8 }}>
+            <div style={{ fontSize: '0.7rem', color: '#444444', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>Revenue Range (Bear → Base → Bull)</div>
+            <RangeBar range={pl.revenue} />
+            <RangeBar range={pl.ebitda} label="EBITDA Range" />
+            {pl.ebitda_margin_pct && <RangeBar range={pl.ebitda_margin_pct} formatter={v => `${v.toFixed(1)}%`} label="EBITDA Margin Range" />}
+          </div>
+          {pl.industry_avg_ebitda_margin != null && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: '0.7rem', color: '#444444', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>EBITDA vs Sector Benchmark</div>
+              <EbitdaBenchmark pl={pl} />
+            </div>
+          )}
+          <DataGrid style={{ marginBottom: 14 }}>
+            <DataCell label="Rev / Employee" value={fmtEur(pl.revenue_per_employee)} />
+            <DataCell label="Benchmark Rev/FTE" value={fmtEur(pl.sanity_check.rev_per_employee_benchmark)} />
+            <DataCell label="Ratio" value={<span style={{ color: pl.sanity_check.overheated ? '#f87171' : '#4ade80', fontWeight: 700 }}>{pl.sanity_check.ratio}×</span>} />
+            {pl.rent_as_revenue_pct != null && <DataCell label="Rent / Revenue" value={<span style={{ color: pl.rent_as_revenue_pct > 12 ? '#f87171' : '#666666' }}>{pl.rent_as_revenue_pct.toFixed(1)}%</span>} />}
+            {pl.personnel_as_revenue_pct != null && <DataCell label="Personnel / Revenue" value={<span style={{ color: pl.personnel_as_revenue_pct > 35 ? '#f87171' : '#666666' }}>{pl.personnel_as_revenue_pct.toFixed(1)}%</span>} />}
+            <DataCell label="Fixed Cost Ratio" value={<span style={{ color: pl.fixed_cost_ratio > 80 ? '#f87171' : pl.fixed_cost_ratio > 65 ? '#fbbf24' : '#4ade80', fontWeight: 700 }}>{pl.fixed_cost_ratio}% of gross profit</span>} />
+            <DataCell label="Breakeven Revenue" value={fmtEur(pl.breakeven_revenue)} />
+            <DataCell label="Total Fixed Costs" value={fmtEur(pl.total_fixed_costs)} />
+          </DataGrid>
+          <ProseBlock text={pl.risk_summary} />
+          <Divider />
+        </>
+      )}
+
+      {/* ═══ AREA OVERVIEW ═══ */}
+      {(am || r.radar_data.length > 0) && (
+        <>
+          <SectionLabel>Area Overview — 500m–1km radius</SectionLabel>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(140px, 170px) 1fr', gap: 16, alignItems: 'center', marginBottom: 14 }}>
+            {am && <AQIGauge index={am.quality_index} />}
+            {r.radar_data.length > 0 && <CompetitorRadar data={r.radar_data} />}
+          </div>
+          {am && (
+            <DataGrid>
+              {am.avg_rating_area != null && <DataCell label="Area Avg Rating" value={`★ ${am.avg_rating_area}`} />}
+              {am.avg_price_level_area != null && <DataCell label="Area Avg Price" value={`€ × ${am.avg_price_level_area}`} />}
+              {am.operational_pct != null && <DataCell label="Operational %" value={`${am.operational_pct}%`} />}
+              <DataCell label="Businesses (1km)" value={am.businesses_count} />
+              <DataCell label="Total Area Reviews" value={am.total_area_reviews.toLocaleString('de-DE')} />
+            </DataGrid>
+          )}
+          <Divider />
+        </>
+      )}
+
+      {/* ═══ KFW ELIGIBILITY ═══ */}
+      {kfw && (
+        <>
+          <SectionLabel>KfW Acquisition Financing Eligibility</SectionLabel>
+          <KfwEligibilityBlock kfw={kfw} />
+          <Divider />
+        </>
+      )}
+
+      {/* ═══ SEASONALITY ═══ */}
+      {sp && (
+        <>
+          <SectionLabel>Seasonality Volatility Analysis</SectionLabel>
+          <SeasonalityChart sp={sp} />
+          <Divider />
+        </>
+      )}
+
+      {/* ═══ ENERGY & SUPPLY CHAIN ═══ */}
+      {ev && (
+        <>
+          <SectionLabel>Energy & Supply Chain Vulnerability</SectionLabel>
+          <EnergyVulnerabilityBlock ev={ev} />
+          <Divider />
+        </>
+      )}
+
+      {/* ═══ MARKET TIMELINE ═══ */}
+      {mt.length > 0 && (
+        <>
+          <SectionLabel>Market Dynamics — 2020–2024</SectionLabel>
+          <MarketTimeline points={mt} />
+          <div style={{ marginTop: 8, fontSize: '0.76rem', color: '#444444', lineHeight: 1.55 }}>
+            <span style={{ color: '#4e9a66', fontWeight: 600 }}>Market Index</span> — synthetic demand index combining COVID recovery trajectory, seasonal patterns and sector cycles for Germany 2020–2024. &nbsp;
+            <span style={{ color: '#fbbf24', fontWeight: 600 }}>Review Activity</span> — normalized quarterly review volume, anchored to real timestamps where available.
+          </div>
+          <Divider />
+        </>
+      )}
+
+      {/* ═══ CLIMATE SENSITIVITY ═══ */}
+      {cd && (
+        <>
+          <SectionLabel>Climate Sensitivity Analysis — 24 Months</SectionLabel>
+          <ClimateSensitivityChart cd={cd} />
+          <Divider />
+        </>
+      )}
+
+      {/* ═══ LABOR MARKET ═══ */}
+      {lm && (
+        <>
+          <SectionLabel>Labor Market Liquidity & Replacement Cost</SectionLabel>
+          <LaborMarketBlock lm={lm} />
+          <Divider />
+        </>
+      )}
+
       {/* ═══ PRICING POWER ═══ */}
       {pp && (
         <>
@@ -930,41 +1244,23 @@ function ResultCard({ r }: { r: ExtractionData }) {
         </>
       )}
 
-      {/* ═══ AREA OVERVIEW ═══ */}
-      {(am || r.radar_data.length > 0) && (
+      {/* ═══ CITY DEMOGRAPHICS ═══ */}
+      {dem && (
         <>
-          <SectionLabel>Area Overview — 500m–1km radius</SectionLabel>
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(140px, 170px) 1fr', gap: 16, alignItems: 'center', marginBottom: 14 }}>
-            {am && <AQIGauge index={am.quality_index} />}
-            {r.radar_data.length > 0 && <CompetitorRadar data={r.radar_data} />}
-          </div>
-          {am && (
-            <DataGrid>
-              {am.avg_rating_area != null && <DataCell label="Area Avg Rating" value={`★ ${am.avg_rating_area}`} />}
-              {am.avg_price_level_area != null && <DataCell label="Area Avg Price" value={`€ × ${am.avg_price_level_area}`} />}
-              {am.operational_pct != null && <DataCell label="Operational %" value={`${am.operational_pct}%`} />}
-              <DataCell label="Businesses (1km)" value={am.businesses_count} />
-              <DataCell label="Total Area Reviews" value={am.total_area_reviews.toLocaleString('de-DE')} />
-            </DataGrid>
-          )}
+          <SectionLabel>City Demographics & Market Sizing</SectionLabel>
+          <CityDemographicsBlock cd={dem} />
           <Divider />
         </>
       )}
 
-      {/* ═══ CONTACT & ADDRESS ═══ */}
-      <SectionLabel>Contact & Location</SectionLabel>
-      <DataGrid>
-        {r.address && <DataCell label="Address" value={<CopyBtn value={r.address} />} />}
-        {r.phone && <DataCell label="Phone" value={<CopyBtn value={r.phone} />} />}
-        {r.phone_intl && r.phone_intl !== r.phone && <DataCell label="Intl." value={<CopyBtn value={r.phone_intl} />} />}
-        {coords && <DataCell label="Coordinates" value={<CopyBtn value={coords} />} />}
-        {r.plus_code && <DataCell label="Plus Code" value={<CopyBtn value={r.plus_code} />} />}
-        {ad.postal_code && <DataCell label="PLZ" value={ad.postal_code} />}
-        {ad.landkreis && <DataCell label="Landkreis" value={ad.landkreis} />}
-        {ad.bundesland && <DataCell label="Bundesland" value={ad.bundesland} />}
-        {ad.country && <DataCell label="Country" value={`${ad.country}${ad.country_code ? ` (${ad.country_code})` : ''}`} />}
-      </DataGrid>
-      <Divider />
+      {/* ═══ DIGITAL VULNERABILITY ═══ */}
+      {dv && (
+        <>
+          <SectionLabel>Digital Infrastructure Risk</SectionLabel>
+          <DigitalVulnerabilityBlock dv={dv} />
+          <Divider />
+        </>
+      )}
 
       {/* ═══ LOCATION ECONOMICS ═══ */}
       {sc && (
@@ -987,7 +1283,6 @@ function ResultCard({ r }: { r: ExtractionData }) {
             </div>
           </div>
           <ProseBlock text={sc.location_economics} />
-          {/* Task 4: Abstract spatial map */}
           {r.latitude != null && r.longitude != null && r.points_of_interest.length > 0 && (
             <div style={{ marginTop: 16 }}>
               <AbstractSpatialMap sc={sc} pois={r.points_of_interest} r={{ latitude: r.latitude!, longitude: r.longitude! }} />
@@ -996,6 +1291,21 @@ function ResultCard({ r }: { r: ExtractionData }) {
           <Divider />
         </>
       )}
+
+      {/* ═══ CONTACT & ADDRESS ═══ */}
+      <SectionLabel>Contact & Location</SectionLabel>
+      <DataGrid>
+        {r.address && <DataCell label="Address" value={<CopyBtn value={r.address} />} />}
+        {r.phone && <DataCell label="Phone" value={<CopyBtn value={r.phone} />} />}
+        {r.phone_intl && r.phone_intl !== r.phone && <DataCell label="Intl." value={<CopyBtn value={r.phone_intl} />} />}
+        {coords && <DataCell label="Coordinates" value={<CopyBtn value={coords} />} />}
+        {r.plus_code && <DataCell label="Plus Code" value={<CopyBtn value={r.plus_code} />} />}
+        {ad.postal_code && <DataCell label="PLZ" value={ad.postal_code} />}
+        {ad.landkreis && <DataCell label="Landkreis" value={ad.landkreis} />}
+        {ad.bundesland && <DataCell label="Bundesland" value={ad.bundesland} />}
+        {ad.country && <DataCell label="Country" value={`${ad.country}${ad.country_code ? ` (${ad.country_code})` : ''}`} />}
+      </DataGrid>
+      <Divider />
 
       {/* ═══ OPENING HOURS ═══ */}
       {r.opening_hours && (
@@ -1180,200 +1490,6 @@ function ResultCard({ r }: { r: ExtractionData }) {
               </div>
             ))}
           </div>
-          <Divider />
-        </>
-      )}
-
-      {/* ═══ SYNTHETIC P&L ═══ */}
-      {pl && (
-        <>
-          <SectionLabel>Synthetic P&L — Probabilistic Estimate</SectionLabel>
-
-          {/* Model assumptions */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
-            {[
-              { k: 'Est. Age', v: `${pl.estimated_age_years}y` },
-              { k: 'FTE', v: String(pl.fte_estimate) },
-              { k: 'Avg Basket', v: `€${pl.adjusted_basket_eur.toFixed(0)}` },
-              { k: 'Capture Rate', v: `${pl.capture_rate_optimistic}% – ${pl.capture_rate_expected}% – ${pl.capture_rate_pessimistic}%` },
-              { k: 'Gross Margin', v: `${pl.gross_margin_pct}%` },
-            ].map(({ k, v }) => (
-              <div key={k} style={{ padding: '6px 12px', borderRadius: 6, background: 'rgba(78,154,102,0.06)', border: '1px solid rgba(78,154,102,0.1)' }}>
-                <div style={{ fontSize: '0.68rem', color: '#444444', marginBottom: 2 }}>{k}</div>
-                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#888888', fontVariantNumeric: 'tabular-nums' }}>{v}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* Sanity check warning */}
-          {pl.sanity_check.overheated && <div style={{ marginBottom: 12 }}><SanityBadge sc={pl.sanity_check} /></div>}
-
-          {/* Task 1: Probabilistic 5-year revenue chart */}
-          <ProbabilisticRevChart pl={pl} />
-
-          {/* P&L table with ranges */}
-          <PLRangeTable pl={pl} />
-
-          {/* Revenue range visual */}
-          <div style={{ marginTop: 16, marginBottom: 8 }}>
-            <div style={{ fontSize: '0.7rem', color: '#444444', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>Revenue Range (Bear → Base → Bull)</div>
-            <RangeBar range={pl.revenue} />
-            <RangeBar range={pl.ebitda} label="EBITDA Range" />
-            {pl.ebitda_margin_pct && <RangeBar range={pl.ebitda_margin_pct} formatter={v => `${v.toFixed(1)}%`} label="EBITDA Margin Range" />}
-          </div>
-
-          {/* EBITDA vs sector */}
-          {pl.industry_avg_ebitda_margin != null && (
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: '0.7rem', color: '#444444', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>EBITDA vs Sector Benchmark</div>
-              <EbitdaBenchmark pl={pl} />
-            </div>
-          )}
-
-          {/* KPIs */}
-          <DataGrid style={{ marginBottom: 14 }}>
-            <DataCell label="Rev / Employee" value={fmtEur(pl.revenue_per_employee)} />
-            <DataCell label="Benchmark Rev/FTE" value={fmtEur(pl.sanity_check.rev_per_employee_benchmark)} />
-            <DataCell label="Ratio" value={<span style={{ color: pl.sanity_check.overheated ? '#f87171' : '#4ade80', fontWeight: 700 }}>{pl.sanity_check.ratio}×</span>} />
-            {pl.rent_as_revenue_pct != null && <DataCell label="Rent / Revenue" value={<span style={{ color: pl.rent_as_revenue_pct > 12 ? '#f87171' : '#666666' }}>{pl.rent_as_revenue_pct.toFixed(1)}%</span>} />}
-            {pl.personnel_as_revenue_pct != null && <DataCell label="Personnel / Revenue" value={<span style={{ color: pl.personnel_as_revenue_pct > 35 ? '#f87171' : '#666666' }}>{pl.personnel_as_revenue_pct.toFixed(1)}%</span>} />}
-            <DataCell label="Fixed Cost Ratio" value={<span style={{ color: pl.fixed_cost_ratio > 80 ? '#f87171' : pl.fixed_cost_ratio > 65 ? '#fbbf24' : '#4ade80', fontWeight: 700 }}>{pl.fixed_cost_ratio}% of gross profit</span>} />
-            <DataCell label="Breakeven Revenue" value={fmtEur(pl.breakeven_revenue)} />
-            <DataCell label="Total Fixed Costs" value={fmtEur(pl.total_fixed_costs)} />
-          </DataGrid>
-
-          <ProseBlock text={pl.risk_summary} />
-          <Divider />
-
-          {/* Dependency Matrix */}
-          <SectionLabel>Business Model & Cost Drivers</SectionLabel>
-          <DependencyMatrixBlock dm={pl.dependency_matrix} />
-          <Divider />
-        </>
-      )}
-
-      {/* ═══ MACRO ═══ */}
-      {md && lf && (
-        <>
-          <SectionLabel>Regional Macroeconomics</SectionLabel>
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(140px, 170px) 1fr', gap: 16, alignItems: 'center', marginBottom: 14 }}>
-            <LFIGauge index={lf.index} />
-            <div>
-              <ProseBlock text={lf.interpretation} />
-              <DataGrid style={{ marginTop: 10 }}>
-                <DataCell label="Local Unemployment" value={<span style={{ color: lf.unemployment_pct > lf.national_avg_unemployment ? '#f87171' : '#4ade80', fontWeight: 700 }}>{lf.unemployment_pct}%</span>} />
-                <DataCell label="National Avg" value={`${lf.national_avg_unemployment}%`} />
-                <DataCell label="Wage Pressure" value={<span style={{ color: lf.wage_pressure_flag ? '#fbbf24' : '#4ade80' }}>{lf.wage_pressure_flag ? 'Elevated' : 'Normal'}</span>} />
-              </DataGrid>
-            </div>
-          </div>
-          <DataGrid style={{ marginBottom: 14 }}>
-            {md.bundesland && <DataCell label="Bundesland" value={md.bundesland} />}
-            {md.city && <DataCell label="City" value={md.city} />}
-            <DataCell label="Median Gross Wage" value={`€${md.median_gross_wage.toLocaleString('de-DE')} p.a.`} />
-            <DataCell label="Commercial Rent" value={`€${md.commercial_rent_per_sqm}/m²/mo`} />
-            <DataCell label="PPP Index" value={<span style={{ color: md.ppp_index >= 100 ? '#4ade80' : '#f87171', fontWeight: 700 }}>{md.ppp_index.toFixed(1)}</span>} />
-          </DataGrid>
-          <div style={{ marginBottom: 4 }}>
-            <div style={{ fontSize: '0.7rem', color: '#999999', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>Purchasing Power vs National Average (100)</div>
-            <PPPBar macro={md} />
-          </div>
-          {/* Unemployment history + demand trend chart */}
-          <UnemploymentTrendChart md={md} mt={mt} />
-          <Divider />
-        </>
-      )}
-
-      {/* ═══ MARKET TIMELINE ═══ */}
-      {mt.length > 0 && (
-        <>
-          <SectionLabel>Market Dynamics — 2020–2024</SectionLabel>
-          <MarketTimeline points={mt} />
-          <div style={{ marginTop: 8, fontSize: '0.76rem', color: '#444444', lineHeight: 1.55 }}>
-            <span style={{ color: '#4e9a66', fontWeight: 600 }}>Market Index</span> — synthetic demand index combining COVID recovery trajectory, seasonal patterns and sector cycles for Germany 2020–2024. &nbsp;
-            <span style={{ color: '#fbbf24', fontWeight: 600 }}>Review Activity</span> — normalized quarterly review volume, anchored to real timestamps where available.
-          </div>
-          <Divider />
-        </>
-      )}
-
-      {/* ═══ CLIMATE SENSITIVITY ═══ */}
-      {cd && (
-        <>
-          <SectionLabel>Climate Sensitivity Analysis — 24 Months</SectionLabel>
-          <ClimateSensitivityChart cd={cd} />
-          <Divider />
-        </>
-      )}
-
-      {/* ═══ INDUSTRY ECONOMICS ═══ */}
-      {eco && (
-        <>
-          <SectionLabel>Industry Economics — {eco.industry_label}</SectionLabel>
-          <DataGrid style={{ marginBottom: 14 }}>
-            <DataCell label="EBITDA Multiple" value={`${eco.ebitda_multiple.low}× – ${eco.ebitda_multiple.mid}× – ${eco.ebitda_multiple.high}×`} />
-            {eco.avg_margin_pct != null && <DataCell label="Avg EBITDA Margin" value={`${eco.avg_margin_pct}%`} />}
-            {eco.market_size_de_bn != null && <DataCell label="Market Size (DE)" value={`€${eco.market_size_de_bn} Mrd.`} />}
-            {eco.cagr_5y_pct != null && <DataCell label="5Y CAGR" value={`${eco.cagr_5y_pct}%`} />}
-          </DataGrid>
-          <p style={{ margin: '0 0 14px', fontSize: '0.82rem', color: '#888888', lineHeight: 1.6 }}>{eco.trend_summary}</p>
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 10, marginBottom: 16 }}>
-            {[
-              { title: 'Structural Margins', text: eco.structural_margins },
-              { title: 'Business Model Mechanics', text: eco.model_mechanics },
-              { title: 'Failure Rate & Risk', text: eco.failure_rate_note },
-            ].map(({ title, text }) => (
-              <div key={title} style={{ padding: '12px 14px', borderRadius: 8, background: 'rgba(0,0,0,0.03)', border: '1px solid rgba(0,0,0,0.06)' }}>
-                <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#4e9a66', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 6 }}>{title}</div>
-                <p style={{ margin: 0, fontSize: '0.79rem', color: '#666666', lineHeight: 1.6 }}>{text}</p>
-              </div>
-            ))}
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {eco.yearly.map((y, i) => (
-              <div key={i} style={{ display: 'flex', gap: 12, fontSize: '0.78rem', lineHeight: 1.6 }}>
-                <span style={{ color: '#4e9a66', fontWeight: 700, minWidth: 36, fontVariantNumeric: 'tabular-nums' }}>{y.year}</span>
-                <span style={{ color: '#444444' }}>{y.context}</span>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-
-      {/* ═══ CITY DEMOGRAPHICS ═══ */}
-      {dem && (
-        <>
-          <SectionLabel>City Demographics & Market Sizing</SectionLabel>
-          <CityDemographicsBlock cd={dem} />
-          <Divider />
-        </>
-      )}
-
-      {/* ═══ ENERGY & SUPPLY CHAIN ═══ */}
-      {ev && (
-        <>
-          <SectionLabel>Energy & Supply Chain Vulnerability</SectionLabel>
-          <EnergyVulnerabilityBlock ev={ev} />
-          <Divider />
-        </>
-      )}
-
-      {/* ═══ DIGITAL VULNERABILITY ═══ */}
-      {dv && (
-        <>
-          <SectionLabel>Digital Infrastructure Risk</SectionLabel>
-          <DigitalVulnerabilityBlock dv={dv} />
-          <Divider />
-        </>
-      )}
-
-      {/* ═══ LABOR MARKET LIQUIDITY ═══ */}
-      {lm && (
-        <>
-          <SectionLabel>Labor Market Liquidity & Replacement Cost</SectionLabel>
-          <LaborMarketBlock lm={lm} />
           <Divider />
         </>
       )}
