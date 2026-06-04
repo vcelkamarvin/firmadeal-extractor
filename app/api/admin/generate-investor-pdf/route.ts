@@ -495,18 +495,30 @@ svg{max-width:100%;height:auto;overflow:visible}
 @media print{
   @page{size:A4 portrait;margin:14mm 16mm}
   *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
-  body{background:#fff!important;padding:0}
+  html,body{background:#fff!important;padding:0;margin:0}
   .pbar{display:none!important}
   .wrap{max-width:100%;padding:0}
-  .card{box-shadow:none;border-radius:8px;margin-bottom:8px;padding:14px 16px}
-  .pg-break{break-before:page;page-break-before:always}
-  .no-break{break-inside:avoid;page-break-inside:avoid}
-  .cta{break-inside:avoid}
-  .page-header{border-radius:8px}
+  .card{
+    box-shadow:none!important;border-radius:6px!important;
+    margin-bottom:8px!important;padding:12px 14px!important;
+    border:1px solid #e4e4e7!important;
+  }
+  /* NO forced page breaks — let the browser paginate naturally */
+  .pg-break{display:none!important}
+  /* Only avoid breaking inside small cohesive units */
+  .no-break,.dcell,.ri,.rev,.badge,.kvr,.chip{break-inside:avoid;page-break-inside:avoid}
+  .cta{break-inside:avoid;page-break-inside:avoid}
+  /* Prevent orphaned section titles */
+  .sec-title{break-after:avoid;page-break-after:avoid}
+  /* SVG charts — scale properly to column width */
+  svg{max-width:100%!important;width:100%!important;height:auto!important;overflow:visible!important}
+  /* Typography */
   .prose{color:#555!important}
   .sec-title{color:#888!important}
   table.t td,.kvk{color:#555!important}
   table.t td.l,.kvv,.dcell-v{color:#111!important}
+  /* Two-col stacks on A4 narrow columns */
+  .tc2,.tc2-wide,.tc2-narrow{gap:10px!important}
 }
 @media(max-width:680px){
   .tc2,.tc2-wide,.tc2-narrow{grid-template-columns:1fr}
@@ -1221,11 +1233,19 @@ function renderReport(r: any, ref: string): string {
 </head>
 <body>
 <div class="wrap">
-  <div class="pbar">
-    <span style="font-size:.68rem;color:#9ca3af;margin-right:auto">Tipp: Drucken → <b>Als PDF speichern</b> → Hintergrundgrafiken aktivieren</span>
-    <button class="pbtn sec" onclick="window.close()">✕ Schließen</button>
-    <button class="pbtn" onclick="window.print()">📄 Als PDF speichern / Drucken</button>
+  <div class="pbar" id="pbar">
+    <span style="font-size:.67rem;color:#9ca3af;margin-right:auto;line-height:1.4">
+      Chrome: <b>Als PDF speichern</b> wählen &nbsp;·&nbsp; <b>Hintergrundgrafiken</b> aktivieren
+    </span>
+    <button class="pbtn sec" onclick="window.close()" style="padding:8px 14px">✕</button>
+    <button class="pbtn" onclick="window.print()" style="font-size:.72rem">📄 Als PDF speichern</button>
   </div>
+  <script>
+  // Auto-open print dialog after fonts + SVGs load
+  window.addEventListener('load', function() {
+    setTimeout(function() { window.print(); }, 900);
+  });
+  </script>
 
   <!-- Header -->
   <div class="page-header" style="margin-bottom:20px">
@@ -1256,15 +1276,12 @@ function renderReport(r: any, ref: string): string {
   ${secValuation}
   ${secIndustry}
   ${secDrivers}
-  <div class="pg-break"></div>
   ${secPL}
-  <div class="pg-break"></div>
   ${secMacro}
   ${secSeason}
   ${secKfw}
   ${secLabor}
   ${secPricing}
-  <div class="pg-break"></div>
   ${secDigital}
   ${secEnergy}
   ${secMarket}
