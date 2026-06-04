@@ -986,6 +986,25 @@ function ResultCard({ r }: { r: ExtractionData }) {
   const kfw = r.kfw_eligibility;
   const sp  = r.seasonality_profile;
 
+  const [teaserLoading, setTeaserLoading] = useState(false);
+  const [teaserError,   setTeaserError]   = useState<string | null>(null);
+
+  async function generateTeaser() {
+    setTeaserLoading(true);
+    setTeaserError(null);
+    try {
+      const res  = await fetch('/api/teaser', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(r) });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      const win = window.open('', '_blank');
+      if (win) { win.document.write(data.html); win.document.close(); }
+    } catch (e: any) {
+      setTeaserError(e.message ?? 'Teaser generation failed');
+    } finally {
+      setTeaserLoading(false);
+    }
+  }
+
   const coords = r.latitude != null && r.longitude != null ? `${r.latitude.toFixed(6)}, ${r.longitude.toFixed(6)}` : null;
   const statusColor = r.business_status === 'OPERATIONAL' ? '#4ade80' : r.business_status === 'CLOSED_TEMPORARILY' ? '#facc15' : '#f87171';
   const services = [
@@ -1016,6 +1035,17 @@ function ResultCard({ r }: { r: ExtractionData }) {
         <div style={{ display: 'flex', gap: 14, fontSize: '0.82rem', flexWrap: 'wrap' }}>
           {r.google_maps_url && <a href={r.google_maps_url} target="_blank" rel="noreferrer" style={{ color: '#4e9a66' }}>Google Maps →</a>}
           {r.website && <a href={r.website} target="_blank" rel="noreferrer" style={{ color: '#4e9a66' }}>Website →</a>}
+        </div>
+        <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <button
+            className="button"
+            onClick={generateTeaser}
+            disabled={teaserLoading}
+            style={{ background: '#111111', fontSize: '0.8rem', letterSpacing: '0.05em', minWidth: 0, padding: '10px 20px' }}
+          >
+            {teaserLoading ? 'Generiere Teaser...' : 'Investment Teaser (DE)'}
+          </button>
+          {teaserError && <span style={{ fontSize: '0.78rem', color: '#b91c1c' }}>{teaserError}</span>}
         </div>
       </div>
 
