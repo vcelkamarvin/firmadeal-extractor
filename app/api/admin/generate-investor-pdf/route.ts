@@ -367,7 +367,8 @@ table.t tr.alt td{background:#f8f8f8}
 .rev-stars{color:#f59e0b;font-weight:700;font-size:.8rem;margin-bottom:2px}
 .rev-text{font-size:.81rem;color:#555;font-style:italic}
 /* header */
-.page-header{background:#111;border-radius:14px;padding:28px 32px;margin-bottom:20px;position:relative;overflow:hidden}
+.logo-box{background:#1db954;color:#111;width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;font-weight:900;font-size:18px;border-radius:6px;flex-shrink:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.page-header{background:#111;border-radius:14px;padding:28px 32px;margin-bottom:20px;position:relative;overflow:hidden;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .page-header::after{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(26,92,58,.12) 0%,transparent 60%);pointer-events:none}
 .ph-eyebrow{font-size:.65rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#1db954;margin-bottom:8px}
 .ph-title{font-size:1.9rem;font-weight:900;letter-spacing:-.04em;color:#fff;margin-bottom:6px}
@@ -387,11 +388,16 @@ table.t tr.alt td{background:#f8f8f8}
 .cta a{display:inline-block;background:#1A5C3A;color:#fff;font-weight:700;font-size:.82rem;padding:12px 30px;border-radius:8px;text-decoration:none;letter-spacing:.03em}
 .discl{margin-top:14px;font-size:.67rem;color:#aaa;line-height:1.7;padding:10px 14px;border:1px solid rgba(0,0,0,.08);border-radius:7px;background:#f8f8f8}
 @media print{
-  body{background:#fff;padding:0}
+  @page{size:A4;margin:16mm}
+  *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+  body{background:#fff!important;padding:0}
   .pbar{display:none!important}
   .wrap{max-width:100%}
-  .card{break-inside:avoid}
-  .pg-break{page-break-after:always}
+  .card{break-inside:avoid;page-break-inside:avoid}
+  .pg-break,.page-break{break-before:page;page-break-before:always}
+  .no-break{break-inside:avoid;page-break-inside:avoid}
+  table{break-inside:avoid;page-break-inside:avoid}
+  .cta{break-inside:avoid}
 }
 @media(max-width:680px){.tc2{grid-template-columns:1fr}.dgrid{grid-template-columns:repeat(2,1fr)}}
 `; }
@@ -441,6 +447,47 @@ function renderReport(r: any, ref: string): string {
     label: `Wettbewerber ${letters[i]}`, rating: c.rating, reviews: c.review_volume,
     website: c.url ? 'Website →' : '—', dist: c.distance, status: c.business_status
   }));
+
+
+  // ── Section: Indikativer Kaufpreisbereich ─────────────────────────────────
+  const bearPrice  = eLow  > 0 ? Math.round(eLow  * mult.low)  : null;
+  const basePrice  = eBase > 0 ? Math.round(eBase * mult.mid)  : null;
+  const bullPrice  = eHigh > 0 ? Math.round(eHigh * mult.high) : null;
+  const anyPositive = bearPrice !== null || basePrice !== null || bullPrice !== null;
+  const secValuation = `
+  <div class="card no-break" style="border:2px solid #1A5C3A;background:#e8f5ee;margin-bottom:18px;-webkit-print-color-adjust:exact;print-color-adjust:exact">
+    <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:#1A5C3A;margin-bottom:14px">INDIKATIVER KAUFPREISBEREICH</div>
+    ${!anyPositive ? `
+    <div style="margin-bottom:10px">
+      <div style="font-size:.9rem;font-weight:800;color:#dc2626">Turnaround-Objekt — Klassische Bewertung nicht anwendbar</div>
+      <div style="font-size:.8rem;color:#666;margin-top:4px">Negativer EBITDA in allen Szenarien (Bear: ${fE(eLow)}, Base: ${fE(eBase)}, Bull: ${fE(eHigh)})</div>
+    </div>
+    ${bullPrice !== null ? `<div style="font-size:.82rem;color:#111;margin-bottom:6px">Indikativer Kaufpreis (Bull-Case): <strong style="font-size:1.4rem;font-weight:900;color:#1A5C3A">${fEraw(bullPrice)}</strong></div>` : ''}
+    ${pl?.breakeven_revenue != null ? `<div style="font-size:.82rem;color:#111">Break-even-Umsatz erforderlich: <strong>${fE(pl.breakeven_revenue)}</strong></div>` : ''}
+    ` : `
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px">
+      <div style="background:#fff;border:1px solid rgba(26,92,58,.2);border-radius:10px;padding:16px 12px;text-align:center;-webkit-print-color-adjust:exact;print-color-adjust:exact">
+        <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#888;margin-bottom:6px">KONSERVATIV</div>
+        <div style="font-size:1.75rem;font-weight:900;color:#111;letter-spacing:-.03em;line-height:1">${bearPrice !== null ? fEraw(bearPrice) : '<span style=\'font-size:1rem\'>Turnaround</span>'}</div>
+        <div style="font-size:.7rem;color:#888;margin-top:6px">${mult.low}× EBITDA</div>
+      </div>
+      <div style="background:#fff;border:2px solid #1A5C3A;border-radius:10px;padding:16px 12px;text-align:center;-webkit-print-color-adjust:exact;print-color-adjust:exact">
+        <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#1A5C3A;margin-bottom:6px">REALISTISCH</div>
+        <div style="font-size:1.75rem;font-weight:900;color:#1A5C3A;letter-spacing:-.03em;line-height:1">${basePrice !== null ? fEraw(basePrice) : '<span style=\'font-size:1rem\'>Turnaround</span>'}</div>
+        <div style="font-size:.7rem;color:#888;margin-top:6px">${mult.mid}× EBITDA</div>
+      </div>
+      <div style="background:#fff;border:1px solid rgba(26,92,58,.2);border-radius:10px;padding:16px 12px;text-align:center;-webkit-print-color-adjust:exact;print-color-adjust:exact">
+        <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#888;margin-bottom:6px">OPTIMISTISCH</div>
+        <div style="font-size:1.75rem;font-weight:900;color:#111;letter-spacing:-.03em;line-height:1">${bullPrice !== null ? fEraw(bullPrice) : '<span style=\'font-size:1rem\'>Turnaround</span>'}</div>
+        <div style="font-size:.7rem;color:#888;margin-top:6px">${mult.high}× EBITDA</div>
+      </div>
+    </div>
+    `}
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;border-top:1px solid rgba(26,92,58,.15);padding-top:10px;margin-top:4px">
+      <span style="font-size:.72rem;color:#666">Branchenmultiple ${mult.low}×–${mult.mid}×–${mult.high}× | ${safe(mult.label)} | Vor Due Diligence</span>
+      <span style="font-size:.68rem;color:#aaa;font-style:italic">Schätzwert auf Basis öffentlicher Daten · Keine Investitionsberatung</span>
+    </div>
+  </div>`;
 
   // ── Section: Industrie-Ökonomie ──────────────────────────────────────────────
   const secIndustry = eco ? `
@@ -674,7 +721,7 @@ function renderReport(r: any, ref: string): string {
     {label:'Regel C — Branche: Keine Einschränkungen (Glücksspiel, Tabak, Rüstung)', pass: kfw.industry_check},
   ] : [];
   const secKfw = kfw ? `
-  <div class="card">
+  <div class="card no-break">
     <div class="sec-title">KfW Akquisitionsfinanzierung — Förderfähigkeit</div>
     <div class="tc2">
       <div>
@@ -1066,11 +1113,15 @@ function renderReport(r: any, ref: string): string {
 <body>
 <div class="wrap">
   <div class="pbar">
-    <button class="pbtn" onclick="window.print()">Als PDF speichern (A4)</button>
+    <button class="pbtn" onclick="window.print()" title="In Chrome: Drucken → Als PDF speichern → Weitere Einstellungen → Hintergrundgrafiken aktivieren">📄 Investorenbericht drucken / als PDF speichern</button>
   </div>
 
   <!-- Header -->
   <div class="page-header" style="margin-bottom:20px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+      <div class="logo-box">F</div>
+      <span style="font-weight:700;font-size:15px;color:#fff;letter-spacing:.01em">Firmadeal.de</span>
+    </div>
     <div class="ph-eyebrow">Firmadeal · Vertrauliches Dokument · 4. Juni 2026 · ${ref}</div>
     <div class="ph-title">INVESTOREN<span>BERICHT</span></div>
     <div class="ph-sub">${subname} · Anonymisierter Investor-Report · Nur für qualifizierte Investoren</div>
@@ -1091,6 +1142,7 @@ function renderReport(r: any, ref: string): string {
     </div>
   </div>` : ''}
 
+  ${secValuation}
   ${secIndustry}
   ${secDrivers}
   <div class="pg-break"></div>
