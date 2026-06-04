@@ -1014,8 +1014,10 @@ function ResultCard({ r }: { r: ExtractionData }) {
       const res  = await fetch('/api/admin/generate-investor-pdf', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(r) });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      const win = window.open('', '_blank');
-      if (win) { win.document.write(data.html); win.document.close(); }
+      // Use Blob URL so CDN scripts (html2pdf.js) load correctly
+      const blob = new Blob([data.html], { type: 'text/html; charset=utf-8' });
+      const url  = URL.createObjectURL(blob);
+      window.open(url, '_blank');
     } catch (e: any) {
       setReportError(e.message ?? 'Report generation failed');
     } finally {

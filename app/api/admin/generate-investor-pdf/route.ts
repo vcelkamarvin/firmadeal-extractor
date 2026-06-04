@@ -391,12 +391,10 @@ table.t tr.alt td{background:#f8f8f8}
   @page{size:A4;margin:16mm}
   *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
   body{background:#fff!important;padding:0}
-  .pbar{display:none!important}
+  .pbar,.dl-bar{display:none!important}
   .wrap{max-width:100%}
-  .card{break-inside:avoid;page-break-inside:avoid}
-  .pg-break,.page-break{break-before:page;page-break-before:always}
+  .pg-break,.page-break{break-before:page;page-break-before:always;height:0;margin:0;padding:0}
   .no-break{break-inside:avoid;page-break-inside:avoid}
-  table{break-inside:avoid;page-break-inside:avoid}
   .cta{break-inside:avoid}
 }
 @media(max-width:680px){.tc2{grid-template-columns:1fr}.dgrid{grid-template-columns:repeat(2,1fr)}}
@@ -450,40 +448,36 @@ function renderReport(r: any, ref: string): string {
 
 
   // ── Section: Indikativer Kaufpreisbereich ─────────────────────────────────
-  const bearPrice  = eLow  > 0 ? Math.round(eLow  * mult.low)  : null;
-  const basePrice  = eBase > 0 ? Math.round(eBase * mult.mid)  : null;
-  const bullPrice  = eHigh > 0 ? Math.round(eHigh * mult.high) : null;
-  const anyPositive = bearPrice !== null || basePrice !== null || bullPrice !== null;
+  // Always show a price. For negative EBITDA, use asset-value floor = max(€12k, 15% of revenue).
+  const assetFloor = Math.max(12000, Math.round(rLow * 0.15));
+  const bearPrice  = eLow  > 0 ? Math.round(eLow  * mult.low)  : assetFloor;
+  const basePrice  = eBase > 0 ? Math.round(eBase * mult.mid)  : (eHigh > 0 ? Math.round(eHigh * mult.low * 0.5) : Math.round(assetFloor * 1.4));
+  const bullPrice  = eHigh > 0 ? Math.round(eHigh * mult.high) : Math.round(assetFloor * 2.2);
+  const bearIsTurnaround = eLow  <= 0;
+  const baseIsTurnaround = eBase <= 0;
+  const allTurnaround    = eLow <= 0 && eBase <= 0 && eHigh <= 0;
   const secValuation = `
   <div class="card no-break" style="border:2px solid #1A5C3A;background:#e8f5ee;margin-bottom:18px;-webkit-print-color-adjust:exact;print-color-adjust:exact">
-    <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:#1A5C3A;margin-bottom:14px">INDIKATIVER KAUFPREISBEREICH</div>
-    ${!anyPositive ? `
-    <div style="margin-bottom:10px">
-      <div style="font-size:.9rem;font-weight:800;color:#dc2626">Turnaround-Objekt — Klassische Bewertung nicht anwendbar</div>
-      <div style="font-size:.8rem;color:#666;margin-top:4px">Negativer EBITDA in allen Szenarien (Bear: ${fE(eLow)}, Base: ${fE(eBase)}, Bull: ${fE(eHigh)})</div>
-    </div>
-    ${bullPrice !== null ? `<div style="font-size:.82rem;color:#111;margin-bottom:6px">Indikativer Kaufpreis (Bull-Case): <strong style="font-size:1.4rem;font-weight:900;color:#1A5C3A">${fEraw(bullPrice)}</strong></div>` : ''}
-    ${pl?.breakeven_revenue != null ? `<div style="font-size:.82rem;color:#111">Break-even-Umsatz erforderlich: <strong>${fE(pl.breakeven_revenue)}</strong></div>` : ''}
-    ` : `
+    <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:#1A5C3A;margin-bottom:6px">INDIKATIVER KAUFPREISBEREICH</div>
+    ${allTurnaround ? `<div style="font-size:.75rem;color:#b45309;font-weight:600;margin-bottom:12px;padding:6px 10px;background:#fffbeb;border-radius:6px;border:1px solid rgba(180,83,9,.2)">⚠ Negativer EBITDA — Preise basieren auf Anlagewert/Umsatzfaktor, nicht EBITDA-Multiple</div>` : ''}
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px">
       <div style="background:#fff;border:1px solid rgba(26,92,58,.2);border-radius:10px;padding:16px 12px;text-align:center;-webkit-print-color-adjust:exact;print-color-adjust:exact">
         <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#888;margin-bottom:6px">KONSERVATIV</div>
-        <div style="font-size:1.75rem;font-weight:900;color:#111;letter-spacing:-.03em;line-height:1">${bearPrice !== null ? fEraw(bearPrice) : '<span style=\'font-size:1rem\'>Turnaround</span>'}</div>
-        <div style="font-size:.7rem;color:#888;margin-top:6px">${mult.low}× EBITDA</div>
+        <div style="font-size:1.75rem;font-weight:900;color:#111;letter-spacing:-.03em;line-height:1">${fEraw(bearPrice)}</div>
+        <div style="font-size:.69rem;color:#888;margin-top:6px">${bearIsTurnaround ? 'Anlagewert-Floor' : `${mult.low}× EBITDA`}</div>
       </div>
       <div style="background:#fff;border:2px solid #1A5C3A;border-radius:10px;padding:16px 12px;text-align:center;-webkit-print-color-adjust:exact;print-color-adjust:exact">
         <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#1A5C3A;margin-bottom:6px">REALISTISCH</div>
-        <div style="font-size:1.75rem;font-weight:900;color:#1A5C3A;letter-spacing:-.03em;line-height:1">${basePrice !== null ? fEraw(basePrice) : '<span style=\'font-size:1rem\'>Turnaround</span>'}</div>
-        <div style="font-size:.7rem;color:#888;margin-top:6px">${mult.mid}× EBITDA</div>
+        <div style="font-size:1.75rem;font-weight:900;color:#1A5C3A;letter-spacing:-.03em;line-height:1">${fEraw(basePrice)}</div>
+        <div style="font-size:.69rem;color:#888;margin-top:6px">${baseIsTurnaround ? 'Umsatzfaktor' : `${mult.mid}× EBITDA`}</div>
       </div>
       <div style="background:#fff;border:1px solid rgba(26,92,58,.2);border-radius:10px;padding:16px 12px;text-align:center;-webkit-print-color-adjust:exact;print-color-adjust:exact">
         <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#888;margin-bottom:6px">OPTIMISTISCH</div>
-        <div style="font-size:1.75rem;font-weight:900;color:#111;letter-spacing:-.03em;line-height:1">${bullPrice !== null ? fEraw(bullPrice) : '<span style=\'font-size:1rem\'>Turnaround</span>'}</div>
-        <div style="font-size:.7rem;color:#888;margin-top:6px">${mult.high}× EBITDA</div>
+        <div style="font-size:1.75rem;font-weight:900;color:#111;letter-spacing:-.03em;line-height:1">${fEraw(bullPrice)}</div>
+        <div style="font-size:.69rem;color:#888;margin-top:6px">${eHigh > 0 ? `${mult.high}× EBITDA` : 'Umsatzfaktor'}</div>
       </div>
     </div>
-    `}
-    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;border-top:1px solid rgba(26,92,58,.15);padding-top:10px;margin-top:4px">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;border-top:1px solid rgba(26,92,58,.15);padding-top:10px">
       <span style="font-size:.72rem;color:#666">Branchenmultiple ${mult.low}×–${mult.mid}×–${mult.high}× | ${safe(mult.label)} | Vor Due Diligence</span>
       <span style="font-size:.68rem;color:#aaa;font-style:italic">Schätzwert auf Basis öffentlicher Daten · Keine Investitionsberatung</span>
     </div>
@@ -790,7 +784,7 @@ function renderReport(r: any, ref: string): string {
       <div>
         ${scRisks.length ? `
         <div class="sec-title">Lieferketten-Inputs — PPI (DE 2020=100)</div>
-        <table class="t"><thead><tr><th style="text-align:left">Input</th><th>PPI</th><th>Trend</th><th>Margin</th></tr></thead><tbody>
+        <table class="t"><thead><tr><th style="text-align:left">Input</th><th>PPI</th><th>Trend</th><th>Marge</th></tr></thead><tbody>
           ${scRisks.map((s:any,i:number) => `<tr class="${i%2?'alt':''}">
             <td class="l">${safe(s.category)}</td>
             <td>${s.ppi_index}</td>
@@ -1109,12 +1103,33 @@ function renderReport(r: any, ref: string): string {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${ref} — Investorenbericht ${subname}</title>
 <style>${css()}</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" crossorigin="anonymous"></script>
 </head>
 <body>
 <div class="wrap">
   <div class="pbar">
-    <button class="pbtn" onclick="window.print()" title="In Chrome: Drucken → Als PDF speichern → Weitere Einstellungen → Hintergrundgrafiken aktivieren">📄 Investorenbericht drucken / als PDF speichern</button>
+    <button class="pbtn" id="dlBtn" onclick="downloadPDF()">⬇ PDF herunterladen</button>
+    <button class="pbtn" style="background:#333" onclick="window.print()">🖨 Drucken</button>
   </div>
+  <script>
+  function downloadPDF() {
+    const btn = document.getElementById('dlBtn');
+    btn.textContent = '⏳ Wird generiert…';
+    btn.disabled = true;
+    const opt = {
+      margin: [10, 12, 10, 12],
+      filename: '${ref}-Investorenbericht.pdf',
+      image: { type: 'jpeg', quality: 0.97 },
+      html2canvas: { scale: 2, useCORS: true, logging: false, letterRendering: true },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      pagebreak: { mode: ['css', 'legacy'], before: '.pg-break', avoid: '.no-break' }
+    };
+    html2pdf().set(opt).from(document.querySelector('.wrap')).save().then(() => {
+      btn.textContent = '⬇ PDF herunterladen';
+      btn.disabled = false;
+    });
+  }
+  </script>
 
   <!-- Header -->
   <div class="page-header" style="margin-bottom:20px">
@@ -1122,7 +1137,7 @@ function renderReport(r: any, ref: string): string {
       <div class="logo-box">F</div>
       <span style="font-weight:700;font-size:15px;color:#fff;letter-spacing:.01em">Firmadeal.de</span>
     </div>
-    <div class="ph-eyebrow">Firmadeal · Vertrauliches Dokument · 4. Juni 2026 · ${ref}</div>
+    <div class="ph-eyebrow">Firmadeal · Vertrauliches Dokument · ${new Date().toLocaleDateString("de-DE",{day:"numeric",month:"long",year:"numeric"})} · ${ref}</div>
     <div class="ph-title">INVESTOREN<span>BERICHT</span></div>
     <div class="ph-sub">${subname} · Anonymisierter Investor-Report · Nur für qualifizierte Investoren</div>
     <div class="ph-meta">
@@ -1146,22 +1161,21 @@ function renderReport(r: any, ref: string): string {
   ${secIndustry}
   ${secDrivers}
   <div class="pg-break"></div>
-  ${secMacro}
-  <div class="pg-break"></div>
   ${secPL}
-  ${secArea}
-  ${secKfw}
   <div class="pg-break"></div>
+  ${secMacro}
   ${secSeason}
+  ${secKfw}
+  ${secLabor}
+  ${secPricing}
+  <div class="pg-break"></div>
+  ${secDigital}
   ${secEnergy}
   ${secMarket}
   ${secClimate}
-  ${secLabor}
-  ${secPricing}
   ${secDem}
-  ${secDigital}
+  ${secArea}
   ${secLocation}
-  <div class="pg-break"></div>
   ${secContact}
   ${secHours}
   ${secServices}
@@ -1179,10 +1193,10 @@ function renderReport(r: any, ref: string): string {
     Dieser Bericht basiert ausschließlich auf öffentlich zugänglichen Daten (Google Maps, Statista, Destatis, Bundesagentur für Arbeit u. a.).
     Alle Finanzkennzahlen sind probabilistische Schätzungen algorithmischer Modelle und stellen keine Gewähr, Zusicherung oder steuerliche/rechtliche Beratung dar.
     Vor jeder Akquisitionsentscheidung ist eine vollständige Due Diligence durch qualifizierte Berater erforderlich.
-    Firmadeal GmbH übernimmt keine Haftung für Richtigkeit oder Vollständigkeit der Angaben. Stand: 4. Juni 2026.
+    Firmadeal GmbH übernimmt keine Haftung für Richtigkeit oder Vollständigkeit der Angaben. Stand: ${new Date().toLocaleDateString("de-DE",{day:"numeric",month:"long",year:"numeric"})}.
   </div>
 
-  <div class="pg-footer">Erstellt mit <strong>Firmadeal</strong> Intelligence Platform · firmadeal.de · 4. Juni 2026</div>
+  <div class="pg-footer">Erstellt mit <strong>Firmadeal</strong> Intelligence Platform · firmadeal.de · ${new Date().toLocaleDateString("de-DE",{day:"numeric",month:"long",year:"numeric"})}</div>
 </div>
 </body>
 </html>`;
