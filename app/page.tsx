@@ -986,8 +986,10 @@ function ResultCard({ r }: { r: ExtractionData }) {
   const kfw = r.kfw_eligibility;
   const sp  = r.seasonality_profile;
 
-  const [teaserLoading, setTeaserLoading] = useState(false);
-  const [teaserError,   setTeaserError]   = useState<string | null>(null);
+  const [teaserLoading,  setTeaserLoading]  = useState(false);
+  const [teaserError,    setTeaserError]    = useState<string | null>(null);
+  const [reportLoading,  setReportLoading]  = useState(false);
+  const [reportError,    setReportError]    = useState<string | null>(null);
 
   async function generateTeaser() {
     setTeaserLoading(true);
@@ -1002,6 +1004,22 @@ function ResultCard({ r }: { r: ExtractionData }) {
       setTeaserError(e.message ?? 'Teaser generation failed');
     } finally {
       setTeaserLoading(false);
+    }
+  }
+
+  async function generateReport() {
+    setReportLoading(true);
+    setReportError(null);
+    try {
+      const res  = await fetch('/api/admin/generate-investor-pdf', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(r) });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      const win = window.open('', '_blank');
+      if (win) { win.document.write(data.html); win.document.close(); }
+    } catch (e: any) {
+      setReportError(e.message ?? 'Report generation failed');
+    } finally {
+      setReportLoading(false);
     }
   }
 
@@ -1036,7 +1054,15 @@ function ResultCard({ r }: { r: ExtractionData }) {
           {r.google_maps_url && <a href={r.google_maps_url} target="_blank" rel="noreferrer" style={{ color: '#4e9a66' }}>Google Maps →</a>}
           {r.website && <a href={r.website} target="_blank" rel="noreferrer" style={{ color: '#4e9a66' }}>Website →</a>}
         </div>
-        <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <button
+            className="button"
+            onClick={generateReport}
+            disabled={reportLoading}
+            style={{ background: '#1A5C3A', fontSize: '0.8rem', letterSpacing: '0.04em', minWidth: 0, padding: '11px 22px', fontWeight: 800 }}
+          >
+            {reportLoading ? 'Generiere Bericht...' : '📄 Investorenbericht (DE) generieren'}
+          </button>
           <button
             className="button"
             onClick={generateTeaser}
@@ -1045,6 +1071,7 @@ function ResultCard({ r }: { r: ExtractionData }) {
           >
             {teaserLoading ? 'Generiere Teaser...' : 'Investment Teaser (DE)'}
           </button>
+          {reportError && <span style={{ fontSize: '0.78rem', color: '#b91c1c' }}>{reportError}</span>}
           {teaserError && <span style={{ fontSize: '0.78rem', color: '#b91c1c' }}>{teaserError}</span>}
         </div>
       </div>
