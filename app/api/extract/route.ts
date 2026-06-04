@@ -106,6 +106,8 @@ export interface SyntheticPL {
   sanity_check: SanityCheck;
   dependency_matrix: DependencyMatrix;
   risk_summary: string;
+  operational_floor_applied: boolean;
+  floor_adjustment_note: string | null;
 }
 
 // ── Spatial context interface ──────────────────────────────────────────────────
@@ -364,9 +366,11 @@ const INDUSTRY_PARAMS: Record<string, IndustryParams> = {
   cafe:         { capture_rate_expected: 2.5, capture_rate_pessimistic: 4.0, capture_rate_optimistic: 1.0, avg_basket_eur: 11,  gross_margin_pct: 72, revenue_per_fte: 95000,  typical_sqm: 65,  sector_wage_multiplier: 0.62 },
   bakery:       { capture_rate_expected: 1.5, capture_rate_pessimistic: 2.5, capture_rate_optimistic: 0.6, avg_basket_eur: 8,   gross_margin_pct: 55, revenue_per_fte: 70000,  typical_sqm: 80,  sector_wage_multiplier: 0.68 },
   bar:          { capture_rate_expected: 4.0, capture_rate_pessimistic: 6.5, capture_rate_optimistic: 2.0, avg_basket_eur: 22,  gross_margin_pct: 75, revenue_per_fte: 90000,  typical_sqm: 80,  sector_wage_multiplier: 0.63 },
-  hair_care:    { capture_rate_expected: 5.0, capture_rate_pessimistic: 8.0, capture_rate_optimistic: 2.0, avg_basket_eur: 45,  gross_margin_pct: 55, revenue_per_fte: 80000,  typical_sqm: 50,  sector_wage_multiplier: 0.70 },
-  beauty_salon: { capture_rate_expected: 5.0, capture_rate_pessimistic: 8.0, capture_rate_optimistic: 2.0, avg_basket_eur: 55,  gross_margin_pct: 55, revenue_per_fte: 85000,  typical_sqm: 50,  sector_wage_multiplier: 0.70 },
+  hair_care:    { capture_rate_expected: 1.5, capture_rate_pessimistic: 2.5, capture_rate_optimistic: 0.6, avg_basket_eur: 45,  gross_margin_pct: 55, revenue_per_fte: 80000,  typical_sqm: 50,  sector_wage_multiplier: 0.70 },
+  beauty_salon: { capture_rate_expected: 1.5, capture_rate_pessimistic: 2.5, capture_rate_optimistic: 0.6, avg_basket_eur: 55,  gross_margin_pct: 55, revenue_per_fte: 85000,  typical_sqm: 50,  sector_wage_multiplier: 0.70 },
   car_repair:   { capture_rate_expected: 3.0, capture_rate_pessimistic: 5.0, capture_rate_optimistic: 1.2, avg_basket_eur: 180, gross_margin_pct: 45, revenue_per_fte: 120000, typical_sqm: 200, sector_wage_multiplier: 1.05 },
+  car_dealer:   { capture_rate_expected: 0.4, capture_rate_pessimistic: 0.7, capture_rate_optimistic: 0.15, avg_basket_eur: 18000, gross_margin_pct: 12, revenue_per_fte: 800000, typical_sqm: 600, sector_wage_multiplier: 1.10 },
+  hardware_store: { capture_rate_expected: 0.4, capture_rate_pessimistic: 0.7, capture_rate_optimistic: 0.15, avg_basket_eur: 85, gross_margin_pct: 35, revenue_per_fte: 220000, typical_sqm: 300, sector_wage_multiplier: 0.90 },
   dentist:      { capture_rate_expected: 6.0, capture_rate_pessimistic: 9.0, capture_rate_optimistic: 2.5, avg_basket_eur: 250, gross_margin_pct: 62, revenue_per_fte: 150000, typical_sqm: 120, sector_wage_multiplier: 1.35 },
   pharmacy:     { capture_rate_expected: 0.8, capture_rate_pessimistic: 1.4, capture_rate_optimistic: 0.3, avg_basket_eur: 35,  gross_margin_pct: 22, revenue_per_fte: 200000, typical_sqm: 80,  sector_wage_multiplier: 1.15 },
   supermarket:  { capture_rate_expected: 0.3, capture_rate_pessimistic: 0.5, capture_rate_optimistic: 0.1, avg_basket_eur: 42,  gross_margin_pct: 24, revenue_per_fte: 280000, typical_sqm: 400, sector_wage_multiplier: 0.85 },
@@ -778,6 +782,8 @@ function calcSyntheticPL(
   reviewCount: number,
   rawReviews: any[],
   macroData: MacroData,
+  businessStatus?: string | null,
+  rating?: string | null,
 ): SyntheticPL {
   const primaryType = types.find(t => INDUSTRY_PARAMS[t]) ?? types[0] ?? 'restaurant';
   const params = INDUSTRY_PARAMS[primaryType] ?? INDUSTRY_PARAMS_DEFAULT;
@@ -799,16 +805,36 @@ function calcSyntheticPL(
   const txnLow  = annualReviews / (params.capture_rate_pessimistic / 100); // higher rate → fewer txn
   const txnHigh = annualReviews / (params.capture_rate_optimistic  / 100); // lower rate  → more txn
 
-  const revMid  = Math.max(15000, Math.round(txnMid  * adjustedBasket));
-  const revLow  = Math.max(8000,  Math.round(txnLow  * adjustedBasket));
-  const revHigh =                 Math.round(txnHigh * adjustedBasket);
+  let revMid  = Math.max(15000, Math.round(txnMid  * adjustedBasket));
+  let revLow  = Math.max(8000,  Math.round(txnLow  * adjustedBasket));
+  let revHigh =                 Math.round(txnHigh * adjustedBasket);
 
   // Fixed costs — anchored to mid-scenario revenue for FTE estimation
-  const fte = Math.max(0.5, Math.round((revMid / params.revenue_per_fte) * 10) / 10);
+  let fte = Math.max(0.5, Math.round((revMid / params.revenue_per_fte) * 10) / 10);
   const sectorWage = macroData.median_gross_wage * params.sector_wage_multiplier;
-  const personnelCost = Math.round(fte * sectorWage * 1.21); // +21% employer social contributions
+  let personnelCost = Math.round(fte * sectorWage * 1.21); // +21% employer social contributions
   const facilityCost  = Math.round(params.typical_sqm * macroData.commercial_rent_per_sqm * 12);
-  const totalFixedCosts = personnelCost + facilityCost;
+  let totalFixedCosts = personnelCost + facilityCost;
+
+  // ── Operational floor: an OPERATIONAL, well-rated business cannot run a structural deficit ──
+  let operationalFloorApplied = false;
+  let floorAdjustmentNote: string | null = null;
+  const ratingNum = rating ? parseFloat(rating) : null;
+  const isOperational = businessStatus === 'OPERATIONAL';
+  const isHighRated = ratingNum !== null && ratingNum >= 4.0;
+  if (isOperational && isHighRated && revMid < totalFixedCosts) {
+    const revFloor = Math.round((totalFixedCosts / (params.gross_margin_pct / 100)) * 1.15);
+    const scaleFactor = revFloor / revMid;
+    const impliedCaptureRate = Math.round((annualReviews / (revFloor / adjustedBasket)) * 10000) / 100;
+    revMid  = revFloor;
+    revLow  = Math.max(Math.round(revFloor * 0.75), 8000);
+    revHigh = Math.round(revFloor * scaleFactor * 0.90); // keep high plausible but scaled
+    fte = Math.max(0.5, Math.round((revMid / params.revenue_per_fte) * 10) / 10);
+    personnelCost = Math.round(fte * sectorWage * 1.21);
+    totalFixedCosts = personnelCost + facilityCost;
+    operationalFloorApplied = true;
+    floorAdjustmentNote = `Revenue floor applied: model-derived revenue was below fixed-cost breakeven for an OPERATIONAL ${ratingNum?.toFixed(1)}★ business. Base reset to ${fmtEurRoute(revFloor)} (reverse solvency: fixed costs ÷ gross margin × 1.15). Implied review capture rate: ${impliedCaptureRate}%.`;
+  }
 
   // Scenario-dependent gross profit and variable opex
   const gpMid  = Math.round(revMid  * (params.gross_margin_pct / 100));
@@ -913,6 +939,8 @@ function calcSyntheticPL(
     },
     dependency_matrix: depMatrix,
     risk_summary: riskSummary,
+    operational_floor_applied: operationalFloorApplied,
+    floor_adjustment_note: floorAdjustmentNote,
   };
 }
 
@@ -1657,7 +1685,7 @@ async function extractFromUrl(inputUrl: string): Promise<ExtractionPayload> {
   const macroData = calcMacroData(payload.region, payload.city, payload.address_detail?.country_code);
   payload.macro_data      = macroData;
   payload.labor_friction  = calcLaborFriction(macroData, payload.types, payload.competitors);
-  payload.synthetic_pl    = calcSyntheticPL(payload.types, targetReviewCount, rawReviews, macroData);
+  payload.synthetic_pl    = calcSyntheticPL(payload.types, targetReviewCount, rawReviews, macroData, payload.business_status, payload.rating);
   payload.market_timeline = buildMarketTimeline(payload.types, targetReviewCount, rawReviews);
   if (lat !== null && lng !== null) {
     payload.climate_data = calcClimateData(lat, lng, weatherRaw, payload.market_timeline, payload.types);

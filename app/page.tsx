@@ -50,6 +50,7 @@ interface SyntheticPL {
   industry_avg_ebitda_margin: number | null; fixed_cost_ratio: number; breakeven_revenue: number;
   revenue_per_employee: number; rent_as_revenue_pct: number | null; personnel_as_revenue_pct: number | null;
   high_fixed_cost_risk: boolean; sanity_check: SanityCheck; dependency_matrix: DependencyMatrix; risk_summary: string;
+  operational_floor_applied: boolean; floor_adjustment_note: string | null;
 }
 interface SpatialContext {
   nearest_transport: { name: string; type: string; distance_m: number; walking_min: number; } | null;
@@ -455,6 +456,15 @@ function SanityBadge({ sc }: { sc: SanityCheck }) {
   return (
     <div style={{ padding: '8px 12px', borderRadius: 6, background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.2)', fontSize: '0.77rem', color: '#fbbf24', lineHeight: 1.5 }}>
       <span style={{ fontWeight: 700 }}>⚠ Model ceiling applied — </span>{sc.compression_note}
+    </div>
+  );
+}
+
+function FloorBadge({ note }: { note: string | null }) {
+  if (!note) return null;
+  return (
+    <div style={{ padding: '8px 12px', borderRadius: 6, background: 'rgba(29,185,84,0.05)', border: '1px solid rgba(29,185,84,0.2)', fontSize: '0.77rem', color: '#17a349', lineHeight: 1.5 }}>
+      <span style={{ fontWeight: 700 }}>✓ Operational floor applied — </span>{note}
     </div>
   );
 }
@@ -1104,6 +1114,7 @@ function ResultCard({ r }: { r: ExtractionData }) {
               </div>
             ))}
           </div>
+          {pl.operational_floor_applied && <div style={{ marginBottom: 12 }}><FloorBadge note={pl.floor_adjustment_note} /></div>}
           {pl.sanity_check.overheated && <div style={{ marginBottom: 12 }}><SanityBadge sc={pl.sanity_check} /></div>}
           <ProbabilisticRevChart pl={pl} />
           <PLRangeTable pl={pl} />
