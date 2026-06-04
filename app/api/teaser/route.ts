@@ -1,537 +1,817 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Real DACH SME M&A EBITDA multiples — 2024 market data
-const GERMAN_MULTIPLES: Record<string, { low: number; high: number; label: string; sector_de: string }> = {
-  restaurant:     { low: 2.5, high: 4.0, label: 'Gastronomie',              sector_de: 'Gastronomie & Restaurantbetrieb' },
-  cafe:           { low: 2.0, high: 3.5, label: 'Café / Kaffeebetrieb',     sector_de: 'Café & Kaffeehausbetrieb' },
-  bakery:         { low: 1.5, high: 3.0, label: 'Bäckereibetrieb',          sector_de: 'Bäckerei & Konditorei' },
-  bar:            { low: 2.0, high: 3.5, label: 'Bar / Barbetrieb',         sector_de: 'Bar & Getränkegastronomie' },
-  lodging:        { low: 4.0, high: 7.0, label: 'Beherbergungsgewerbe',     sector_de: 'Hotel & Beherbergungsgewerbe' },
-  hair_care:      { low: 1.5, high: 2.5, label: 'Friseurbetrieb',           sector_de: 'Friseursalon & Haarpflege' },
-  beauty_salon:   { low: 1.5, high: 2.5, label: 'Kosmetikstudio',           sector_de: 'Kosmetik & Beauty-Dienstleistungen' },
-  car_repair:     { low: 2.5, high: 4.0, label: 'Kfz-Werkstatt',            sector_de: 'Kfz-Service & Reparatur' },
-  car_dealer:     { low: 3.0, high: 5.0, label: 'Kraftfahrzeughandel',      sector_de: 'Kraftfahrzeughandel' },
-  dentist:        { low: 3.0, high: 5.0, label: 'Zahnarztpraxis',           sector_de: 'Zahnmedizinische Praxis' },
-  pharmacy:       { low: 3.5, high: 5.5, label: 'Apotheke',                 sector_de: 'Apotheke & Pharmadistribution' },
-  supermarket:    { low: 1.5, high: 3.0, label: 'Lebensmitteleinzelhandel', sector_de: 'Lebensmitteleinzelhandel' },
-  hardware_store: { low: 2.0, high: 3.5, label: 'Fachhandel',               sector_de: 'Fachhandel & Einzelhandel' },
+// ── DACH SME M&A EBITDA multiples 2024 ────────────────────────────────────────
+const MULTIPLES: Record<string, { low: number; high: number; label: string; sector_de: string }> = {
+  restaurant:     { low: 2.5, high: 4.0, label: 'Gastronomie',               sector_de: 'Gastronomie & Restaurantbetrieb' },
+  cafe:           { low: 2.0, high: 3.5, label: 'Café',                       sector_de: 'Café & Kaffeehausbetrieb' },
+  bakery:         { low: 1.5, high: 3.0, label: 'Bäckerei',                   sector_de: 'Bäckerei & Konditorei' },
+  bar:            { low: 2.0, high: 3.5, label: 'Bar',                         sector_de: 'Bar & Getränkegastronomie' },
+  lodging:        { low: 4.0, high: 7.0, label: 'Hotel',                       sector_de: 'Hotel & Beherbergungsgewerbe' },
+  hair_care:      { low: 1.5, high: 2.5, label: 'Friseur',                     sector_de: 'Friseursalon & Haarpflege' },
+  beauty_salon:   { low: 1.5, high: 2.5, label: 'Kosmetik',                    sector_de: 'Kosmetik & Beauty' },
+  car_repair:     { low: 2.5, high: 4.0, label: 'Kfz-Werkstatt',               sector_de: 'Kfz-Service & Reparatur' },
+  car_dealer:     { low: 3.0, high: 5.0, label: 'Kraftfahrzeughandel',         sector_de: 'Kraftfahrzeughandel' },
+  dentist:        { low: 3.0, high: 5.0, label: 'Zahnarztpraxis',              sector_de: 'Zahnmedizinische Praxis' },
+  pharmacy:       { low: 3.5, high: 5.5, label: 'Apotheke',                    sector_de: 'Apotheke & Pharmaeinzelhandel' },
+  supermarket:    { low: 1.5, high: 3.0, label: 'Lebensmittelhandel',          sector_de: 'Lebensmitteleinzelhandel' },
+  hardware_store: { low: 2.0, high: 3.5, label: 'Fachhandel',                  sector_de: 'Fachhandel & Einzelhandel' },
 };
-const MULTIPLES_DEFAULT = { low: 2.5, high: 4.5, label: 'Gewerbebetrieb', sector_de: 'Gewerblicher Betrieb' };
+const MULT_DEFAULT = { low: 2.5, high: 4.5, label: 'Gewerbebetrieb', sector_de: 'Gewerblicher Betrieb' };
 
-function fmtEur(n: number): string {
-  if (n >= 1_000_000) return `€\u202f${(n / 1_000_000).toFixed(2)}\u202fMio.`;
-  if (n >= 1_000)     return `€\u202f${Math.round(n / 1_000).toLocaleString('de-DE')}k`;
-  return `€\u202f${n.toLocaleString('de-DE')}`;
+// ── Formatters ─────────────────────────────────────────────────────────────────
+function fmtEur(n: number, decimals = 0): string {
+  if (Math.abs(n) >= 1_000_000) return `€\u202f${(n / 1_000_000).toFixed(2)}\u202fMio.`;
+  if (Math.abs(n) >= 1_000)     return `€\u202f${Math.round(n / 1_000).toLocaleString('de-DE')}k`;
+  return `€\u202f${n.toLocaleString('de-DE', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
 }
-
-function sentimentSynthesis(ctx: ReturnType<typeof buildContext>): string {
-  const { sentiment, rating, reviewCount } = ctx;
-  const ratingNum = parseFloat(String(rating)) || 0;
-  const sentences: string[] = [];
-
-  if (ratingNum >= 4.5) {
-    sentences.push(`Das Unternehmen verfügt über eine außerordentlich starke Marktwahrnehmung mit einer Google-Bewertung von ${rating}/5,0 bei ${Number(reviewCount).toLocaleString('de-DE')} verifizierten Kundenbewertungen — ein Indikator für nachhaltige Kundenbindung und überdurchschnittliche Servicequalität.`);
-  } else if (ratingNum >= 4.0) {
-    sentences.push(`Mit einer Google-Gesamtbewertung von ${rating}/5,0 (${Number(reviewCount).toLocaleString('de-DE')} Bewertungen) positioniert sich der Betrieb klar im oberen Qualitätssegment seines lokalen Wettbewerbsumfeldes.`);
-  } else {
-    sentences.push(`Die Kundenbewertungen (${rating}/5,0, n=${Number(reviewCount).toLocaleString('de-DE')}) zeigen ein solides operatives Niveau mit Verbesserungspotenzial in ausgewählten Servicebereichen.`);
-  }
-
-  if (sentiment) {
-    const score = sentiment.score ?? 0;
-    if (score > 0.7) {
-      sentences.push(`Die Sentiment-Analyse der jüngsten Bewertungen ergibt einen Netto-Score von +${score.toFixed(1)}: ${sentiment.positive ?? '—'} positive gegenüber ${sentiment.negative ?? '—'} negativen Rückmeldungen, was auf eine konsistent positive Kundenerfahrung hinweist.`);
-    } else if (score >= 0) {
-      sentences.push(`Die Sentiment-Auswertung (Netto: ${score >= 0 ? '+' : ''}${score.toFixed(1)}) zeigt ein ausgeglichenes bis positives Kundenfeedback-Profil mit konstruktivem Optimierungspotenzial.`);
-    }
-    if (sentiment.tourists && sentiment.tourists !== '—') {
-      sentences.push(`Der demografische Einzugsbereich der Kundschaft umfasst zu ${sentiment.tourists} auswärtige Gäste und Touristen — ein Hinweis auf überregionale Relevanz und Markenbekanntheit über den unmittelbaren Standort hinaus.`);
-    }
-    if (sentiment.languages && sentiment.languages !== '—' && sentiment.languages.includes(',')) {
-      sentences.push(`Die mehrsprachige Bewertungsstruktur (${sentiment.languages}) unterstreicht die internationale Reichweite und die Attraktivität für ein diversifiziertes Kundensegment.`);
-    }
-  }
-
-  return sentences.join(' ');
+function fmtPct(n: number | null | undefined): string {
+  return n != null ? `${n.toFixed(1)}\u202f%` : '—';
 }
+function sign(n: number): string { return n >= 0 ? '+' : ''; }
 
+// ── Context builder ────────────────────────────────────────────────────────────
 function buildContext(r: any) {
-  const types: string[] = r.types ?? [];
-  const primaryType = types.find((t: string) => GERMAN_MULTIPLES[t]) ?? types[0] ?? 'restaurant';
-  const mult = GERMAN_MULTIPLES[primaryType] ?? MULTIPLES_DEFAULT;
+  const types: string[]  = r.types ?? [];
+  const pt    = types.find((t: string) => MULTIPLES[t]) ?? types[0] ?? 'restaurant';
+  const mult  = MULTIPLES[pt] ?? MULT_DEFAULT;
 
-  const pl    = r.synthetic_pl;
-  const ra    = r.review_analysis;
-  const hours = r.opening_hours;
-  const macro = r.macro_data;
+  const pl  = r.synthetic_pl;
+  const ra  = r.review_analysis;
+  const h   = r.opening_hours;
+  const mac = r.macro_data;
+  const dem = r.city_demographics;
+  const lm  = r.labor_market;
+  const dv  = r.digital_vulnerability;
+  const pp  = r.pricing_power;
+  const ev  = r.energy_vulnerability;
 
-  const revenue  = pl?.revenue?.mid  ?? null;
+  // Revenue / EBITDA scenarios
+  const revBase  = pl?.revenue?.mid  ?? null;
   const revLow   = pl?.revenue?.low  ?? null;
   const revHigh  = pl?.revenue?.high ?? null;
-  const ebitda   = pl?.ebitda?.mid   ?? null;
-  const ebitdaLow  = pl?.ebitda?.low  ?? null;
-  const ebitdaHigh = pl?.ebitda?.high ?? null;
+  const eBase    = pl?.ebitda?.mid   ?? null;
+  const eLow     = pl?.ebitda?.low   ?? null;
+  const eHigh    = pl?.ebitda?.high  ?? null;
+  const isNegativeEBITDA = eBase !== null && eBase < 0;
 
-  const kaufpreisMin = ebitda ? Math.round(ebitda * mult.low)  : null;
-  const kaufpreisMax = ebitda ? Math.round(ebitda * mult.high) : null;
+  // Purchase price — only if EBITDA is positive
+  const kaufMin = (!isNegativeEBITDA && eBase) ? Math.round(eBase * mult.low)  : null;
+  const kaufMax = (!isNegativeEBITDA && eBase) ? Math.round(eBase * mult.high) : null;
 
-  const country      = r.address_detail?.country_code ?? 'DE';
-  const region       = r.region ?? r.country ?? 'DACH-Region';
-  const countryLabel = country === 'DE' ? 'Deutschland' : country === 'AT' ? 'Österreich' : country === 'CH' ? 'Schweiz' : country === 'CZ' ? 'Tschechien' : 'DACH-Region';
+  // Country / Region
+  const cc     = r.address_detail?.country_code ?? 'DE';
+  const region = r.region ?? r.country ?? 'DACH-Region';
+  const ccLabel: Record<string, string> = { DE: 'Deutschland', AT: 'Österreich', CH: 'Schweiz', CZ: 'Tschechien', PL: 'Polen' };
 
+  // Services
   const services = [
-    r.delivery             ? 'Lieferservice'          : null,
-    r.dine_in              ? 'Vor-Ort-Verzehr'        : null,
-    r.takeout              ? 'Außer-Haus-Verkauf'     : null,
-    r.reservable           ? 'Tischreservierung'      : null,
-    r.serves_beer          ? 'Bierausschank'          : null,
-    r.serves_wine          ? 'Weinausschank'          : null,
-    r.serves_breakfast     ? 'Frühstücksservice'      : null,
-    r.serves_dinner        ? 'Abendessen'             : null,
+    r.delivery              ? 'Lieferservice'         : null,
+    r.dine_in               ? 'Vor-Ort-Verzehr'       : null,
+    r.takeout               ? 'Außer-Haus-Verkauf'    : null,
+    r.reservable            ? 'Tischreservierung'     : null,
+    r.serves_beer           ? 'Bierausschank'         : null,
+    r.serves_wine           ? 'Weinausschank'         : null,
+    r.serves_breakfast      ? 'Frühstücksservice'     : null,
+    r.serves_dinner         ? 'Abendessen'            : null,
     r.wheelchair_accessible ? 'Barrierefreiheit'      : null,
-    r.curbside_pickup      ? 'Abholung am Fahrzeug'   : null,
   ].filter(Boolean) as string[];
 
-  const sentiment = ra ? {
-    score:     ra.net_sentiment_score,
-    positive:  ra.positive_count,
-    negative:  ra.negative_count,
-    neutral:   ra.neutral_count,
-    total:     ra.total_reviews_analysed,
-    range:     ra.date_range_covered,
-    avgLen:    ra.avg_review_length_chars,
-    languages: ra.languages_detected?.join(', ') ?? null,
-    tourists:  ra.tourist_percentage != null ? `${ra.tourist_percentage}%` : null,
-    praises:   ra.key_praises?.slice(0, 4) ?? [],
-  } : null;
-
   return {
-    sectorLabel:  mult.label,
-    sectorDe:     mult.sector_de,
+    // Identity
+    sectorLabel:     mult.label,
+    sectorDe:        mult.sector_de,
     region,
-    countryLabel,
-    pppIndex:     macro?.ppp_index ?? 100,
-    revenue:      revenue   ? fmtEur(revenue)   : 'k.\u202fA.',
-    revLow:       revLow    ? fmtEur(revLow)    : null,
-    revHigh:      revHigh   ? fmtEur(revHigh)   : null,
-    ebitda:       ebitda    ? fmtEur(ebitda)    : 'k.\u202fA.',
-    ebitdaLow:    ebitdaLow  ? fmtEur(ebitdaLow)  : null,
-    ebitdaHigh:   ebitdaHigh ? fmtEur(ebitdaHigh) : null,
-    ebitdaRaw:    ebitda,
-    grossMargin:  pl?.gross_margin_pct ?? null,
-    multLow:      mult.low,
-    multHigh:     mult.high,
-    kaufpreisMin: kaufpreisMin ? fmtEur(kaufpreisMin) : 'k.\u202fA.',
-    kaufpreisMax: kaufpreisMax ? fmtEur(kaufpreisMax) : 'k.\u202fA.',
-    weeklyHours:  hours?.weekly_total_hours ?? null,
-    dailyAvg:     hours?.daily_average_hours ?? null,
-    schedule:     hours?.text_summary ?? null,
+    countryCode:     cc,
+    countryLabel:    ccLabel[cc] ?? 'DACH-Region',
+    rating:          r.rating     ?? null,
+    reviewCount:     r.review_volume ?? null,
+    businessStatus:  r.business_status ?? null,
+
+    // P&L
+    revBase, revLow, revHigh,
+    eBase, eLow, eHigh,
+    isNegativeEBITDA,
+    grossMargin:     pl?.gross_margin_pct  ?? null,
+    fte:             pl?.fte_estimate      ?? null,
+    personnelCost:   pl?.personnel_cost    ?? null,
+    facilityCost:    pl?.facility_cost     ?? null,
+    facilitySqm:     pl?.facility_sqm      ?? null,
+    totalFixed:      pl?.total_fixed_costs ?? null,
+    fixedCostRatio:  pl?.fixed_cost_ratio  ?? null,
+    breakeven:       pl?.breakeven_revenue ?? null,
+    floorApplied:    pl?.operational_floor_applied ?? false,
+    kaufMin, kaufMax,
+    multLow: mult.low, multHigh: mult.high,
+
+    // Macro
+    ppp:             mac?.ppp_index              ?? null,
+    wage:            mac?.median_gross_wage       ?? null,
+    rent:            mac?.commercial_rent_per_sqm ?? null,
+    unemployment:    mac?.unemployment_rate       ?? null,
+
+    // Demographics
+    population:      dem?.city_population         ?? null,
+    popTrend:        dem?.population_trend_5y_pct ?? null,
+    cityName:        dem?.city_name               ?? region,
+
+    // Labor market
+    laborFriction:   lm?.labor_friction_index  ?? null,
+    laborNote:       lm?.interpretation         ?? null,
+
+    // Digital vulnerability
+    dvScore:         dv?.overall_risk_score     ?? null,
+    dvSsl:           dv?.ssl_valid              ?? null,
+    dvSpf:           dv?.spf_record             ?? null,
+    dvDmarc:         dv?.dmarc_record           ?? null,
+    dvNotes:         dv?.risk_notes             ?? null,
+
+    // Competition / pricing power
+    competitorCount: r.competitor_count          ?? null,
+    competitors:     r.competitors               ?? [],
+    demandShare:     pp?.demand_share_pct        ?? null,
+    ratingVsMarket:  pp?.rating_vs_market        ?? null,
+    pricingSignal:   pp?.signal                  ?? null,
+
+    // Ops
+    weeklyHours:     h?.weekly_total_hours        ?? null,
+    dailyAvg:        h?.daily_average_hours       ?? null,
+    schedule:        h?.text_summary              ?? null,
     services,
-    rating:       r.rating ?? '—',
-    reviewCount:  r.review_volume ?? '—',
-    sentiment,
-    fte:          pl?.fte_estimate ?? null,
-    breakeven:    pl?.breakeven_revenue ? fmtEur(pl.breakeven_revenue) : null,
-    fixedCostRatio: pl?.fixed_cost_ratio ?? null,
-    floorApplied: pl?.operational_floor_applied ?? false,
-    pricing_power: r.pricing_power?.signal ?? null,
+
+    // Sentiment
+    sentiment: ra ? {
+      score:    ra.net_sentiment_score,
+      positive: ra.positive_count,
+      negative: ra.negative_count,
+      neutral:  ra.neutral_count,
+      total:    ra.total_reviews_analysed,
+      range:    ra.date_range_covered,
+      languages: ra.languages_detected?.join(', ') ?? null,
+      tourists: ra.tourist_percentage,
+      praises:  ra.key_praises?.slice(0, 4) ?? [],
+    } : null,
   };
 }
 
-function renderHtml(ctx: ReturnType<typeof buildContext>): string {
-  const today = new Date().toLocaleDateString('de-DE', { year: 'numeric', month: 'long', day: 'numeric' });
-  const synthesis = sentimentSynthesis(ctx);
+// ── HTML renderer ──────────────────────────────────────────────────────────────
+function render(c: ReturnType<typeof buildContext>): string {
+  const today = '4. Juni 2026';
 
-  const scenarioRows = (ctx.revLow || ctx.revHigh) ? `
-    <table class="scenario-table">
-      <thead>
-        <tr><th></th><th>Bear</th><th>Base</th><th>Bull</th></tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td class="row-label">Umsatz (p.a.)</td>
-          <td>${ctx.revLow ?? '—'}</td>
-          <td class="mid">${ctx.revenue}</td>
-          <td>${ctx.revHigh ?? '—'}</td>
-        </tr>
-        <tr>
-          <td class="row-label">EBITDA</td>
-          <td>${ctx.ebitdaLow ?? '—'}</td>
-          <td class="mid">${ctx.ebitda}</td>
-          <td>${ctx.ebitdaHigh ?? '—'}</td>
-        </tr>
-      </tbody>
-    </table>` : '';
+  // EBITDA display helpers
+  const eBaseStr  = c.eBase  != null ? fmtEur(c.eBase)  : 'k.\u202fA.';
+  const eLowStr   = c.eLow   != null ? fmtEur(c.eLow)   : '—';
+  const eHighStr  = c.eHigh  != null ? fmtEur(c.eHigh)  : '—';
+  const revBaseStr = c.revBase ? fmtEur(c.revBase) : 'k.\u202fA.';
+  const revLowStr  = c.revLow  ? fmtEur(c.revLow)  : '—';
+  const revHighStr = c.revHigh ? fmtEur(c.revHigh) : '—';
 
-  const serviceChips = ctx.services.map(s =>
-    `<span class="chip">${s}</span>`
-  ).join('');
+  // Turnaround vs normal valuation card
+  const valuationHtml = c.isNegativeEBITDA
+    ? `<div class="fin-card turnaround-card" style="grid-column:span 2">
+        <div class="fin-card-label">Transaktionswert</div>
+        <div class="fin-card-value" style="font-size:1rem;color:#b45309;">Turnaround / Sanierungsobjekt</div>
+        <div class="fin-card-sub" style="margin-top:6px;line-height:1.5;">
+          Das negative Base-Case-EBITDA von ${eBaseStr} schließt eine klassische Multiple-Bewertung aus.
+          Der Transaktionswert basiert auf einem Restrukturierungsrahmen und erfordert gesonderte
+          Eigenkapital- oder Fremdkapitalanpassungen im Rahmen einer individuellen Due-Diligence-Prüfung.
+        </div>
+      </div>`
+    : `<div class="fin-card">
+        <div class="fin-card-label">Indikativer Kaufpreis</div>
+        <div class="fin-card-value accent">${c.kaufMin ? fmtEur(c.kaufMin) : '—'} – ${c.kaufMax ? fmtEur(c.kaufMax) : '—'}</div>
+        <div class="fin-card-sub">Vor Due Diligence · ${c.multLow}× – ${c.multHigh}× EBITDA</div>
+      </div>`;
 
-  const praisesHtml = ctx.sentiment?.praises?.length
-    ? ctx.sentiment.praises.map((p: string) => `<li>${p}</li>`).join('')
-    : '';
+  // EBITDA card color
+  const ebitdaColor = c.isNegativeEBITDA ? '#dc2626' : '#111111';
+  const ebitdaSubLabel = c.isNegativeEBITDA
+    ? '<div class="fin-card-sub" style="color:#dc2626">Turnaround — negativer EBITDA</div>'
+    : `<div class="fin-card-sub">Branchen-Ø ${c.multLow}× – ${c.multHigh}× EBITDA</div>`;
+
+  // Page 3: scenario table rows
+  const cogsBase  = c.revBase  ? Math.round(c.revBase  * ((100 - (c.grossMargin ?? 12)) / 100)) : null;
+  const cogsLow   = c.revLow   ? Math.round(c.revLow   * ((100 - (c.grossMargin ?? 12)) / 100)) : null;
+  const cogsHigh  = c.revHigh  ? Math.round(c.revHigh  * ((100 - (c.grossMargin ?? 12)) / 100)) : null;
+  const gpBase    = c.revBase  ? Math.round(c.revBase  * ((c.grossMargin ?? 12) / 100)) : null;
+  const gpLow     = c.revLow   ? Math.round(c.revLow   * ((c.grossMargin ?? 12) / 100)) : null;
+  const gpHigh    = c.revHigh  ? Math.round(c.revHigh  * ((c.grossMargin ?? 12) / 100)) : null;
+  const varBase   = c.revBase  ? Math.round(c.revBase  * 0.08) : null;
+  const varLow    = c.revLow   ? Math.round(c.revLow   * 0.08) : null;
+  const varHigh   = c.revHigh  ? Math.round(c.revHigh  * 0.08) : null;
+
+  // Page 4: digital risk chips
+  const dvItems = [
+    { label: 'SSL/TLS', ok: c.dvSsl !== false, note: c.dvSsl === false ? 'Fehlt — kritisches Sicherheitsrisiko' : 'Aktiv' },
+    { label: 'SPF-Eintrag', ok: c.dvSpf !== false, note: c.dvSpf === false ? 'Fehlt — E-Mail-Spoofing möglich' : 'Vorhanden' },
+    { label: 'DMARC-Richtlinie', ok: c.dvDmarc !== false, note: c.dvDmarc === false ? 'Fehlt — keine Betrugsabwehr' : 'Konfiguriert' },
+  ];
+
+  const dvRiskColor = (c.dvScore ?? 0) >= 80 ? '#dc2626' : (c.dvScore ?? 0) >= 50 ? '#d97706' : '#16a34a';
 
   return `<!DOCTYPE html>
 <html lang="de">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Investment Teaser — ${ctx.sectorLabel}</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Investment Teaser — ${c.sectorLabel} · Firmadeal</title>
 <style>
-  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
 
-  body {
-    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-    -webkit-font-smoothing: antialiased;
-    background: #f5f5f5;
-    color: #111111;
-    line-height: 1.55;
-    padding: 32px 24px;
-  }
+:root {
+  --espresso:   #2C1A0E;
+  --espresso2:  #3D2410;
+  --cream:      #FAF7F2;
+  --cream2:     #F3EDE3;
+  --white:      #FFFFFF;
+  --green:      #1db954;
+  --green-d:    #17a349;
+  --amber:      #b45309;
+  --red:        #dc2626;
+  --text:       #1a1a1a;
+  --muted:      #6b6b6b;
+  --subtle:     #999999;
+  --border:     rgba(0,0,0,0.09);
+}
 
-  .page { max-width: 900px; margin: 0 auto; }
+body {
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  background: var(--cream);
+  color: var(--text);
+  line-height: 1.55;
+}
 
-  /* ── print button ── */
-  .print-bar {
-    display: flex; justify-content: flex-end; margin-bottom: 20px;
-  }
-  .print-btn {
-    background: #111111; color: #ffffff; border: none; cursor: pointer;
-    font-family: inherit; font-size: 0.8rem; font-weight: 700;
-    letter-spacing: 0.05em; padding: 10px 22px; border-radius: 8px;
-    transition: background 0.15s;
-  }
-  .print-btn:hover { background: #1db954; }
+/* ── page wrapper ── */
+.page-wrap {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 0 40px;
+}
 
-  /* ── header ── */
-  .header {
-    background: #111111;
-    border-radius: 16px;
-    padding: 36px 40px;
-    margin-bottom: 24px;
-    position: relative;
-    overflow: hidden;
-  }
-  .header::before {
-    content: '';
-    position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-    background: linear-gradient(135deg, rgba(29,185,84,0.08) 0%, transparent 60%);
-    pointer-events: none;
-  }
-  .header-eyebrow {
-    font-size: 0.7rem; font-weight: 700; letter-spacing: 0.12em;
-    text-transform: uppercase; color: #1db954; margin-bottom: 10px;
-  }
-  .header h1 {
-    font-size: 2.2rem; font-weight: 900; letter-spacing: -0.04em;
-    color: #ffffff; margin-bottom: 8px;
-  }
-  .header h1 span { color: #1db954; }
-  .header-subtitle {
-    font-size: 0.88rem; color: rgba(255,255,255,0.55); font-weight: 400;
-  }
-  .header-meta {
-    display: flex; gap: 20px; margin-top: 20px; flex-wrap: wrap;
-  }
-  .header-meta-item {
-    font-size: 0.75rem; color: rgba(255,255,255,0.4); letter-spacing: 0.03em;
-  }
-  .header-meta-item strong { color: rgba(255,255,255,0.75); font-weight: 600; }
+/* ── print bar ── */
+.print-bar {
+  display: flex; justify-content: flex-end; padding: 20px 32px 12px;
+  background: var(--cream);
+}
+.print-btn {
+  background: var(--espresso); color: #fff; border: none; cursor: pointer;
+  font-family: inherit; font-size: 0.78rem; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 10px 24px; border-radius: 8px; transition: background .15s;
+}
+.print-btn:hover { background: var(--green); }
 
-  /* ── section label ── */
-  .section-label {
-    font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
-    letter-spacing: 0.1em; color: #999999; margin-bottom: 12px; margin-top: 2px;
-  }
+/* ── page section (triggers page break) ── */
+.page-section {
+  padding: 36px 40px;
+  page-break-after: always;
+  break-after: page;
+  background: var(--cream);
+}
+.page-section:last-of-type { page-break-after: auto; break-after: auto; }
 
-  /* ── financial cards ── */
-  .fin-grid {
-    display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
-    margin-bottom: 24px;
-  }
-  .fin-card {
-    background: #ffffff; border: 1px solid rgba(0,0,0,0.08);
-    border-radius: 12px; padding: 18px 16px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-  }
-  .fin-card-label {
-    font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.08em;
-    color: #999999; margin-bottom: 8px;
-  }
-  .fin-card-value {
-    font-size: 1.25rem; font-weight: 800; color: #111111;
-    letter-spacing: -0.02em; line-height: 1.2;
-  }
-  .fin-card-value.accent { color: #1db954; }
-  .fin-card-sub {
-    font-size: 0.72rem; color: #888888; margin-top: 4px;
-  }
+/* ── header banner ── */
+.header-banner {
+  background: var(--espresso);
+  border-radius: 14px;
+  padding: 36px 40px;
+  margin-bottom: 28px;
+  position: relative;
+  overflow: hidden;
+}
+.header-banner::after {
+  content: '';
+  position: absolute; top:0; left:0; right:0; bottom:0;
+  background: linear-gradient(135deg, rgba(29,185,84,.07) 0%, transparent 55%);
+  pointer-events: none;
+}
+.banner-eyebrow {
+  font-size: .66rem; font-weight: 700; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--green); margin-bottom: 10px;
+}
+.banner-title {
+  font-size: 2.4rem; font-weight: 900; letter-spacing: -.04em;
+  color: #fff; margin-bottom: 6px;
+}
+.banner-title span { color: var(--green); }
+.banner-sub {
+  font-size: .87rem; color: rgba(255,255,255,.5); margin-bottom: 20px;
+}
+.banner-meta {
+  display: flex; flex-wrap: wrap; gap: 22px;
+  border-top: 1px solid rgba(255,255,255,.1); padding-top: 16px;
+}
+.banner-meta-item { font-size: .73rem; color: rgba(255,255,255,.38); }
+.banner-meta-item strong { color: rgba(255,255,255,.72); font-weight:600; }
 
-  /* ── scenario table ── */
-  .scenario-wrap {
-    background: #ffffff; border: 1px solid rgba(0,0,0,0.08);
-    border-radius: 12px; padding: 20px 22px; margin-bottom: 24px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-  }
-  .scenario-table {
-    width: 100%; border-collapse: collapse; font-size: 0.83rem;
-    font-variant-numeric: tabular-nums;
-  }
-  .scenario-table th {
-    text-align: right; padding: 6px 10px; font-size: 0.66rem;
-    text-transform: uppercase; letter-spacing: 0.08em; color: #999999;
-    border-bottom: 1px solid rgba(0,0,0,0.07);
-  }
-  .scenario-table th:first-child { text-align: left; }
-  .scenario-table td {
-    padding: 8px 10px; text-align: right; color: #555555;
-    border-bottom: 1px solid rgba(0,0,0,0.04);
-  }
-  .scenario-table td.row-label { text-align: left; font-weight: 600; color: #111111; }
-  .scenario-table td.mid { font-weight: 700; color: #111111; }
-  .scenario-table tr:last-child td { border-bottom: none; }
+/* ── section header ── */
+.section-banner {
+  background: var(--espresso2);
+  border-radius: 10px;
+  padding: 20px 28px;
+  margin-bottom: 22px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.section-banner h2 {
+  font-size: 1rem; font-weight: 800; letter-spacing: -.01em; color: #fff;
+}
+.section-banner .page-tag {
+  font-size: .64rem; font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--green);
+  background: rgba(29,185,84,.12); border: 1px solid rgba(29,185,84,.2);
+  padding: 4px 10px; border-radius: 20px;
+}
 
-  /* ── two-col ops ── */
-  .ops-grid {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
-    margin-bottom: 24px;
-  }
-  .ops-card {
-    background: #ffffff; border: 1px solid rgba(0,0,0,0.08);
-    border-radius: 12px; padding: 20px 22px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-  }
-  .ops-card h3 {
-    font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
-    letter-spacing: 0.09em; color: #999999; margin-bottom: 14px;
-  }
-  .ops-row {
-    display: flex; justify-content: space-between; align-items: baseline;
-    padding: 6px 0; border-bottom: 1px solid rgba(0,0,0,0.05);
-    font-size: 0.83rem;
-  }
-  .ops-row:last-child { border-bottom: none; }
-  .ops-key { color: #777777; }
-  .ops-val { font-weight: 600; color: #111111; text-align: right; }
+/* ── section label ── */
+.slabel {
+  font-size: .65rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .1em; color: var(--subtle); margin-bottom: 12px;
+}
 
-  /* ── service chips ── */
-  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
-  .chip {
-    font-size: 0.73rem; font-weight: 600; padding: 4px 10px;
-    border-radius: 20px; background: rgba(29,185,84,0.08);
-    border: 1px solid rgba(29,185,84,0.2); color: #17a349;
-  }
+/* ── financial cards ── */
+.fin-grid {
+  display: grid; grid-template-columns: repeat(4,1fr); gap: 12px;
+  margin-bottom: 24px;
+}
+.fin-card {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 12px; padding: 18px 16px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.05);
+  page-break-inside: avoid; break-inside: avoid;
+}
+.fin-card-label { font-size:.63rem; text-transform:uppercase; letter-spacing:.08em; color:var(--subtle); margin-bottom:8px; }
+.fin-card-value { font-size:1.2rem; font-weight:800; letter-spacing:-.02em; color:var(--text); line-height:1.2; }
+.fin-card-value.accent { color: var(--green); }
+.fin-card-value.warn   { color: var(--red); }
+.fin-card-value.amber  { color: var(--amber); }
+.fin-card-sub { font-size:.71rem; color:var(--muted); margin-top:5px; }
+.turnaround-card { border-color: rgba(180,83,9,.25); background: #fffbf5; }
 
-  /* ── sentiment ── */
-  .sentiment-card {
-    background: #ffffff; border: 1px solid rgba(0,0,0,0.08);
-    border-radius: 12px; padding: 22px 24px; margin-bottom: 24px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-  }
-  .sentiment-grid {
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-    gap: 8px; margin-bottom: 18px;
-  }
-  .sentiment-cell {
-    background: #f8f8f8; border: 1px solid rgba(0,0,0,0.07);
-    border-radius: 8px; padding: 10px 12px;
-  }
-  .sentiment-cell-label {
-    font-size: 0.63rem; text-transform: uppercase; letter-spacing: 0.07em;
-    color: #aaaaaa; margin-bottom: 4px;
-  }
-  .sentiment-cell-value {
-    font-size: 0.9rem; font-weight: 700; color: #111111;
-    font-variant-numeric: tabular-nums;
-  }
-  .sentiment-synthesis {
-    font-size: 0.84rem; color: #555555; line-height: 1.7;
-    padding-top: 14px; border-top: 1px solid rgba(0,0,0,0.06);
-  }
-  .praises-list {
-    margin: 10px 0 0 0; padding-left: 18px; font-size: 0.8rem;
-    color: #777777; line-height: 1.6;
-  }
+/* ── turnaround badge ── */
+.turnaround-badge {
+  display:inline-flex; align-items:center; gap:8px;
+  background:#fef3c7; border:1px solid #fcd34d;
+  color:#92400e; font-size:.75rem; font-weight:700;
+  padding:8px 16px; border-radius:8px; margin-bottom:20px;
+}
 
-  /* ── footer / cta ── */
-  .cta-block {
-    background: #ffffff; border: 1px solid rgba(0,0,0,0.08);
-    border-radius: 16px; padding: 32px 36px; text-align: center;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-  }
-  .cta-block h2 {
-    font-size: 1.1rem; font-weight: 800; letter-spacing: -0.02em;
-    color: #111111; margin-bottom: 8px;
-  }
-  .cta-block p {
-    font-size: 0.84rem; color: #777777; margin-bottom: 22px;
-  }
-  .cta-btn {
-    display: inline-block; background: #1db954; color: #ffffff;
-    font-family: inherit; font-size: 0.83rem; font-weight: 700;
-    letter-spacing: 0.04em; padding: 13px 32px; border-radius: 10px;
-    border: none; cursor: pointer; text-decoration: none;
-    transition: background 0.15s;
-  }
-  .cta-btn:hover { background: #17a349; }
-  .disclaimer {
-    margin-top: 20px; font-size: 0.71rem; color: #aaaaaa; line-height: 1.6;
-    border-top: 1px solid rgba(0,0,0,0.06); padding-top: 16px;
-  }
+/* ── data table ── */
+.data-table {
+  width:100%; border-collapse:collapse; font-size:.82rem;
+  font-variant-numeric:tabular-nums; margin-bottom:20px;
+  page-break-inside: avoid; break-inside: avoid;
+}
+.data-table th {
+  text-align:right; padding:8px 12px; font-size:.63rem;
+  text-transform:uppercase; letter-spacing:.09em; color:var(--subtle);
+  background:var(--cream2); border-bottom:2px solid var(--border);
+}
+.data-table th:first-child { text-align:left; }
+.data-table td {
+  padding:9px 12px; text-align:right; color:var(--muted);
+  border-bottom:1px solid var(--border);
+}
+.data-table td.row-label { text-align:left; font-weight:600; color:var(--text); }
+.data-table td.mid { font-weight:700; color:var(--text); }
+.data-table td.pos { color:#16a34a; font-weight:700; }
+.data-table td.neg { color:var(--red); font-weight:700; }
+.data-table tr.total-row td { background:var(--cream2); font-weight:700; color:var(--text); }
+.data-table tr.spacer td { border-bottom:2px solid var(--border); padding:2px; }
+.data-table tr:last-child td { border-bottom:none; }
 
-  /* ── firmadeal watermark ── */
-  .fd-brand {
-    text-align: center; margin-top: 24px; font-size: 0.7rem;
-    color: #cccccc; letter-spacing: 0.06em; text-transform: uppercase;
-  }
-  .fd-brand strong { color: #1db954; }
+/* ── macro grid ── */
+.macro-grid {
+  display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr));
+  gap:10px; margin-bottom:20px;
+}
+.macro-cell {
+  background:var(--white); border:1px solid var(--border);
+  border-radius:10px; padding:14px 16px;
+  page-break-inside:avoid; break-inside:avoid;
+}
+.macro-cell-label { font-size:.62rem; text-transform:uppercase; letter-spacing:.07em; color:var(--subtle); margin-bottom:5px; }
+.macro-cell-value { font-size:.95rem; font-weight:700; color:var(--text); }
+.macro-cell-sub   { font-size:.7rem; color:var(--muted); margin-top:3px; }
 
-  /* ── print ── */
-  @media print {
-    body { background: #ffffff; padding: 0; }
-    .print-bar { display: none !important; }
-    .header { border-radius: 0; }
-    .page { max-width: 100%; }
-  }
+/* ── two-col layout ── */
+.two-col { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px; }
+.panel {
+  background:var(--white); border:1px solid var(--border);
+  border-radius:12px; padding:20px 22px;
+  page-break-inside:avoid; break-inside:avoid;
+}
+.panel h3 { font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.09em; color:var(--subtle); margin-bottom:14px; }
+.kv-row { display:flex; justify-content:space-between; align-items:baseline; padding:6px 0; border-bottom:1px solid rgba(0,0,0,.04); font-size:.82rem; }
+.kv-row:last-child { border-bottom:none; }
+.kv-key { color:var(--muted); }
+.kv-val { font-weight:600; color:var(--text); text-align:right; }
 
-  @media (max-width: 680px) {
-    .fin-grid { grid-template-columns: repeat(2, 1fr); }
-    .ops-grid  { grid-template-columns: 1fr; }
-  }
+/* ── risk items ── */
+.risk-item {
+  display:flex; align-items:flex-start; gap:12px;
+  padding:12px 14px; border-radius:8px; margin-bottom:8px;
+  page-break-inside:avoid; break-inside:avoid;
+}
+.risk-item.fail { background:#fef2f2; border:1px solid rgba(220,38,38,.15); }
+.risk-item.pass { background:#f0fdf4; border:1px solid rgba(22,163,74,.15); }
+.risk-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; margin-top:5px; }
+.risk-dot.fail { background:var(--red); }
+.risk-dot.pass { background:#16a34a; }
+.risk-label { font-size:.8rem; font-weight:700; color:var(--text); margin-bottom:2px; }
+.risk-note  { font-size:.74rem; color:var(--muted); line-height:1.5; }
+
+/* ── chips ── */
+.chips { display:flex; flex-wrap:wrap; gap:6px; }
+.chip  { font-size:.72rem; font-weight:600; padding:4px 10px; border-radius:20px; background:rgba(29,185,84,.07); border:1px solid rgba(29,185,84,.2); color:#17a349; }
+
+/* ── text block ── */
+.text-block { font-size:.82rem; color:var(--muted); line-height:1.75; margin-bottom:18px; padding:18px 20px; background:var(--white); border-radius:10px; border:1px solid var(--border); }
+.text-block strong { color:var(--text); }
+
+/* ── CTA ── */
+.cta-block { background:var(--espresso); border-radius:14px; padding:36px 40px; text-align:center; margin-top:8px; }
+.cta-block h2 { font-size:1.2rem; font-weight:800; color:#fff; margin-bottom:8px; }
+.cta-block p  { font-size:.84rem; color:rgba(255,255,255,.5); margin-bottom:24px; max-width:520px; margin-left:auto; margin-right:auto; }
+.cta-btn { display:inline-block; background:var(--green); color:#fff; font-family:inherit; font-size:.84rem; font-weight:700; letter-spacing:.04em; padding:14px 36px; border-radius:10px; border:none; cursor:pointer; text-decoration:none; }
+.cta-btn:hover { background:var(--green-d); }
+.disclaimer { margin-top:20px; font-size:.68rem; color:rgba(255,255,255,.3); line-height:1.7; border-top:1px solid rgba(255,255,255,.1); padding-top:16px; }
+
+/* ── footer ── */
+.fd-footer { text-align:center; padding:20px; font-size:.68rem; color:var(--subtle); letter-spacing:.06em; text-transform:uppercase; }
+.fd-footer strong { color:var(--green); }
+
+/* ── print ── */
+@media print {
+  body { background:#fff; }
+  .print-bar { display:none !important; }
+  .page-section { padding:28px 36px; }
+  .header-banner, .section-banner { border-radius:0; }
+  .page-wrap { max-width:100%; }
+}
+
+@media (max-width:680px) {
+  .fin-grid { grid-template-columns:repeat(2,1fr); }
+  .two-col  { grid-template-columns:1fr; }
+  .page-section { padding:24px 20px; }
+}
 </style>
 </head>
 <body>
-<div class="page">
+<div class="page-wrap">
 
-  <!-- print button -->
+  <!-- print bar -->
   <div class="print-bar">
     <button class="print-btn" onclick="window.print()">Als PDF speichern</button>
   </div>
 
-  <!-- header -->
-  <div class="header">
-    <div class="header-eyebrow">Firmadeal — Vertrauliches Dokument</div>
-    <h1>INVESTMENT <span>TEASER</span></h1>
-    <div class="header-subtitle">${ctx.sectorDe} &nbsp;·&nbsp; ${ctx.region}, ${ctx.countryLabel} &nbsp;·&nbsp; DACH-Markt</div>
-    <div class="header-meta">
-      <div class="header-meta-item"><strong>Dokumenttyp</strong>&nbsp; Anonymisierter Investoren-Teaser</div>
-      <div class="header-meta-item"><strong>Erstellt</strong>&nbsp; ${today}</div>
-      <div class="header-meta-item"><strong>Vertraulichkeit</strong>&nbsp; Nur für interne Investorenprüfung</div>
+  <!-- ════════════════════════════════════════════════════════════ PAGE 1 ══ -->
+  <div class="page-section">
+
+    <div class="header-banner">
+      <div class="banner-eyebrow">Firmadeal · Vertrauliches Dokument · ${today}</div>
+      <div class="banner-title">INVESTMENT <span>TEASER</span></div>
+      <div class="banner-sub">${c.sectorDe} &nbsp;·&nbsp; ${c.region}, ${c.countryLabel} &nbsp;·&nbsp; DACH-Markt</div>
+      <div class="banner-meta">
+        <div class="banner-meta-item"><strong>Dokumenttyp</strong>&nbsp; Anonymisierter Investoren-Teaser</div>
+        <div class="banner-meta-item"><strong>Erstellt</strong>&nbsp; ${today}</div>
+        <div class="banner-meta-item"><strong>Sektor</strong>&nbsp; ${c.sectorLabel}</div>
+        <div class="banner-meta-item"><strong>Status</strong>&nbsp; ${c.businessStatus === 'OPERATIONAL' ? 'Operativ' : c.businessStatus ?? '—'}</div>
+        <div class="banner-meta-item"><strong>Vertraulichkeit</strong>&nbsp; Nur für interne Investorenprüfung</div>
+      </div>
     </div>
+
+    ${c.isNegativeEBITDA ? `<div class="turnaround-badge">⚠ Turnaround-Profil / Sanierungsobjekt — Negativer Base-Case-EBITDA</div>` : ''}
+
+    <div class="slabel">Transaktionskennzahlen — Schätzwerte Base Case</div>
+    <div class="fin-grid">
+      <div class="fin-card">
+        <div class="fin-card-label">Jahresumsatz (est.)</div>
+        <div class="fin-card-value">${revBaseStr}</div>
+        ${c.grossMargin != null ? `<div class="fin-card-sub">Rohertragsmarge ${c.grossMargin}\u202f%</div>` : ''}
+      </div>
+      <div class="fin-card">
+        <div class="fin-card-label">EBITDA (Base Case)</div>
+        <div class="fin-card-value ${c.isNegativeEBITDA ? 'warn' : ''}" style="color:${ebitdaColor}">${eBaseStr}</div>
+        ${ebitdaSubLabel}
+      </div>
+      <div class="fin-card">
+        <div class="fin-card-label">Break-even-Umsatz</div>
+        <div class="fin-card-value ${c.isNegativeEBITDA ? 'amber' : ''}">${c.breakeven ? fmtEur(c.breakeven) : '—'}</div>
+        <div class="fin-card-sub">Minimaler Umsatzschwellenwert</div>
+      </div>
+      ${valuationHtml}
+    </div>
+
+    ${c.isNegativeEBITDA ? `
+    <div class="text-block">
+      <strong>Transaktionsstruktur — Restrukturierungsrahmen:</strong> Das vorliegende Objekt weist im Base Case ein negatives EBITDA von ${eBaseStr} auf.
+      Eine klassische Unternehmensbewertung auf Multiple-Basis ist unter diesen Voraussetzungen nicht anwendbar.
+      Der indikative Kaufpreis ist von einer vollständigen Restrukturierungsplanung, dem Volumen notwendiger Kapitalzuführungen
+      sowie der Verhandlungsbereitschaft des Veräußerers abhängig. Investoren sollten eine Asset-Deal-Struktur mit
+      Schuldenübernahme oder eine Kapitalzuführung von mindestens ${c.breakeven ? fmtEur(Math.round(c.breakeven * 0.20)) : '—'} in Betracht ziehen,
+      um das operative Defizit zu überbrücken und den Break-even-Umsatz von ${c.breakeven ? fmtEur(c.breakeven) : '—'} zu erreichen.
+    </div>` : ''}
+
+    <div class="slabel">Betrieb & Kapazität</div>
+    <div class="two-col">
+      <div class="panel">
+        <h3>Betriebsparameter</h3>
+        ${c.weeklyHours != null ? `<div class="kv-row"><span class="kv-key">Wochenstunden gesamt</span><span class="kv-val">${c.weeklyHours}\u202fh</span></div>` : ''}
+        ${c.dailyAvg    != null ? `<div class="kv-row"><span class="kv-key">Ø Stunden pro Tag</span><span class="kv-val">${c.dailyAvg}\u202fh</span></div>` : ''}
+        ${c.fte         != null ? `<div class="kv-row"><span class="kv-key">Mitarbeiter (FTE)</span><span class="kv-val">${c.fte}</span></div>` : ''}
+        ${c.facilitySqm != null ? `<div class="kv-row"><span class="kv-key">Gewerbefläche</span><span class="kv-val">${c.facilitySqm.toLocaleString('de-DE')}\u202fm²</span></div>` : ''}
+        ${c.fixedCostRatio != null ? `<div class="kv-row"><span class="kv-key">Fixkostenquote (GP)</span><span class="kv-val">${c.fixedCostRatio}\u202f%</span></div>` : ''}
+        ${c.rating != null ? `<div class="kv-row"><span class="kv-key">Google-Bewertung</span><span class="kv-val">★ ${c.rating} / 5,0 (${Number(c.reviewCount).toLocaleString('de-DE')} Rez.)</span></div>` : ''}
+        ${c.schedule ? `<div style="margin-top:12px;font-size:.75rem;color:var(--muted);line-height:1.6;">${c.schedule}</div>` : ''}
+      </div>
+      <div class="panel">
+        <h3>Attribute & Services</h3>
+        ${c.services.length ? `<div class="chips">${c.services.map(s => `<span class="chip">${s}</span>`).join('')}</div>` : '<span style="font-size:.8rem;color:var(--subtle)">Keine Angaben</span>'}
+        ${c.pricingSignal ? `<div style="margin-top:16px" class="kv-row"><span class="kv-key">Pricing-Power-Signal</span><span class="kv-val" style="color:${c.pricingSignal==='STRONG'?'#16a34a':c.pricingSignal==='WEAK'?'var(--red)':'var(--amber)'}">${c.pricingSignal==='STRONG'?'Stark':c.pricingSignal==='MODERATE'?'Moderat':'Schwach'}</span></div>` : ''}
+      </div>
+    </div>
+
   </div>
 
-  <!-- financial cards -->
-  <div class="section-label">Finanzielle Kennzahlen — Schätzwerte (Base-Case)</div>
-  <div class="fin-grid">
-    <div class="fin-card">
-      <div class="fin-card-label">Jahresumsatz (est.)</div>
-      <div class="fin-card-value">${ctx.revenue}</div>
-      ${ctx.grossMargin ? `<div class="fin-card-sub">Rohertragsmarge ${ctx.grossMargin}%</div>` : ''}
-    </div>
-    <div class="fin-card">
-      <div class="fin-card-label">EBITDA (est.)</div>
-      <div class="fin-card-value">${ctx.ebitda}</div>
-      ${ctx.breakeven ? `<div class="fin-card-sub">Break-even ${ctx.breakeven}</div>` : ''}
-    </div>
-    <div class="fin-card">
-      <div class="fin-card-label">Branchen-Multiple</div>
-      <div class="fin-card-value">${ctx.multLow}× – ${ctx.multHigh}×</div>
-      <div class="fin-card-sub">EBITDA-Basis, DACH 2024</div>
-    </div>
-    <div class="fin-card">
-      <div class="fin-card-label">Indikativer Kaufpreis</div>
-      <div class="fin-card-value accent">${ctx.kaufpreisMin} – ${ctx.kaufpreisMax}</div>
-      <div class="fin-card-sub">Indikativ, vor Due Diligence</div>
-    </div>
-  </div>
+  <!-- ════════════════════════════════════════════════════════════ PAGE 2 ══ -->
+  <div class="page-section">
 
-  <!-- scenario table -->
-  ${scenarioRows ? `
-  <div class="scenario-wrap">
-    <div class="section-label" style="margin-bottom:14px">Szenario-Analyse — Bear / Base / Bull</div>
-    ${scenarioRows}
-  </div>` : ''}
-
-  <!-- operations -->
-  <div class="section-label">Betrieb & Leistungsprofil</div>
-  <div class="ops-grid">
-    <div class="ops-card">
-      <h3>Betriebszeiten & Parameter</h3>
-      ${ctx.weeklyHours ? `<div class="ops-row"><span class="ops-key">Wochenstunden gesamt</span><span class="ops-val">${ctx.weeklyHours}h</span></div>` : ''}
-      ${ctx.dailyAvg    ? `<div class="ops-row"><span class="ops-key">Ø Stunden pro Tag</span><span class="ops-val">${ctx.dailyAvg}h</span></div>` : ''}
-      ${ctx.fte         ? `<div class="ops-row"><span class="ops-key">Geschätzte Mitarbeiter (FTE)</span><span class="ops-val">${ctx.fte}</span></div>` : ''}
-      ${ctx.fixedCostRatio ? `<div class="ops-row"><span class="ops-key">Fixkostenquote</span><span class="ops-val">${ctx.fixedCostRatio}%</span></div>` : ''}
-      ${ctx.schedule ? `<div style="margin-top:12px; font-size:0.77rem; color:#888888; line-height:1.6;">${ctx.schedule}</div>` : ''}
+    <div class="section-banner">
+      <h2>Makroökonomie & Regionale Standortanalyse</h2>
+      <span class="page-tag">Seite 2 / 4</span>
     </div>
-    <div class="ops-card">
-      <h3>Attribute & Services</h3>
-      ${ctx.services.length
-        ? `<div class="chips">${serviceChips}</div>`
-        : '<span style="font-size:0.82rem;color:#aaaaaa">Keine Angaben verfügbar</span>'
+
+    <div class="slabel">Wirtschafts- und Bevölkerungsprofil — ${c.cityName ?? c.region}</div>
+    <div class="macro-grid">
+      ${c.population    != null ? `<div class="macro-cell"><div class="macro-cell-label">Stadtbevölkerung</div><div class="macro-cell-value">${Number(c.population).toLocaleString('de-DE')}</div></div>` : ''}
+      ${c.popTrend      != null ? `<div class="macro-cell"><div class="macro-cell-label">Bevölkerungstrend (5J)</div><div class="macro-cell-value" style="color:${c.popTrend < 0 ? 'var(--red)' : '#16a34a'}">${sign(c.popTrend)}${c.popTrend.toFixed(1)}\u202f%</div><div class="macro-cell-sub">${c.popTrend < 0 ? 'Rückläufige Tendenz' : 'Wachsende Tendenz'}</div></div>` : ''}
+      ${c.unemployment  != null ? `<div class="macro-cell"><div class="macro-cell-label">Arbeitslosenquote</div><div class="macro-cell-value">${fmtPct(c.unemployment)}</div><div class="macro-cell-sub">Lokaler Wert</div></div>` : ''}
+      ${c.wage          != null ? `<div class="macro-cell"><div class="macro-cell-label">Medianlohn (brutto)</div><div class="macro-cell-value">${fmtEur(c.wage)}\u202fp.a.</div></div>` : ''}
+      ${c.ppp           != null ? `<div class="macro-cell"><div class="macro-cell-label">Kaufkraftindex (DE=100)</div><div class="macro-cell-value" style="color:${c.ppp < 70 ? 'var(--amber)' : 'var(--text)'}">${c.ppp.toFixed(1)}</div><div class="macro-cell-sub">${c.ppp < 70 ? 'Deutlich unter DE-Ø' : 'Vergleichbar mit DE-Ø'}</div></div>` : ''}
+      ${c.rent          != null ? `<div class="macro-cell"><div class="macro-cell-label">Gewerbermiete (est.)</div><div class="macro-cell-value">${fmtEur(c.rent, 0)}\u202f/m²/Monat</div></div>` : ''}
+    </div>
+
+    <div class="slabel">Arbeitsmarktanalyse</div>
+    <div class="text-block">
+      ${c.laborFriction != null
+        ? `<strong>Labor Friction Index: ${c.laborFriction}/100.</strong> ${c.laborNote ?? (c.laborFriction >= 70 ? 'Ein hoher Friction-Score deutet auf erhebliche Rekrutierungsengpässe hin. Die Verfügbarkeit qualifizierter Fachkräfte ist strukturell eingeschränkt, was die Personalplanung und Lohnkostenentwicklung des Zielunternehmens direkt beeinflusst.' : c.laborFriction >= 40 ? 'Moderate Rekrutierungsengpässe. Die regionale Arbeitskräftenachfrage übersteigt das Angebot in spezifischen Qualifikationsprofilen, was zu Lohnprämiendruck in einzelnen Segmenten führen kann.' : 'Entspannter Arbeitsmarkt mit ausreichend verfügbaren Fachkräften für den betreffenden Sektor.')}`
+        : 'Keine Arbeitsmarktdaten verfügbar.'
       }
-      ${ctx.pricing_power ? `<div style="margin-top:14px;"><div class="ops-row"><span class="ops-key">Pricing-Power-Signal</span><span class="ops-val" style="color:${ctx.pricing_power === 'STRONG' ? '#1db954' : ctx.pricing_power === 'WEAK' ? '#ef4444' : '#f59e0b'}">${ctx.pricing_power === 'STRONG' ? 'Stark' : ctx.pricing_power === 'MODERATE' ? 'Moderat' : 'Schwach'}</span></div></div>` : ''}
+      ${c.unemployment != null ? ` Die lokale Arbeitslosenquote von ${fmtPct(c.unemployment)} liegt ${(c.unemployment ?? 0) < 3 ? 'deutlich unter dem nationalen Durchschnitt, was auf einen angespannten lokalen Arbeitsmarkt hindeutet' : 'im nationalen Durchschnittssegment'}.` : ''}
+      ${c.wage != null ? ` Der Medianlohn von ${fmtEur(c.wage)} p.a. definiert die regionale Lohnkostenbasis für die Personalplanung.` : ''}
     </div>
-  </div>
 
-  <!-- sentiment -->
-  <div class="section-label">Marktwahrnehmung & Kundenfeedback</div>
-  <div class="sentiment-card">
-    <div class="sentiment-grid">
-      <div class="sentiment-cell">
-        <div class="sentiment-cell-label">Google-Bewertung</div>
-        <div class="sentiment-cell-value">★ ${ctx.rating} / 5,0</div>
+    ${c.ppp != null && c.ppp < 75 ? `
+    <div class="slabel">Kaufkraft & Konsumdynamik</div>
+    <div class="text-block">
+      <strong>Kaufkraftindex: ${c.ppp?.toFixed(1)} (DE = 100).</strong> Die lokale Kaufkraft liegt signifikant unterhalb des deutschen Referenzwertes.
+      Dies hat direkte Auswirkungen auf die erzielbaren Durchschnittspreise, die Konsumbereitschaft der Kundschaft sowie auf realistische Umsatzprojektionen.
+      Investoren sollten Preisstrategien auf Basis der lokalen Zahlungsbereitschaft kalibrieren und die PPP-Diskrepanz bei der Bewertungsmodellierung berücksichtigen.
+      ${c.countryLabel === 'Tschechien' ? 'Im tschechischen Markt sind lokale Kaufkraftindizes typischerweise 40–60% unter dem deutschen Niveau, was sich strukturell in niedrigeren absoluten Umsatzzahlen widerspiegelt.' : ''}
+    </div>` : ''}
+
+    <div class="slabel">Gewerbeimmobilienmarkt</div>
+    <div class="two-col">
+      <div class="panel">
+        <h3>Mietkostenstruktur</h3>
+        ${c.rent        != null ? `<div class="kv-row"><span class="kv-key">Gewerbermiete (Markt)</span><span class="kv-val">${fmtEur(c.rent, 0)}\u202f€/m²/Monat</span></div>` : ''}
+        ${c.facilitySqm != null && c.facilityCost != null ? `<div class="kv-row"><span class="kv-key">Objektfläche (est.)</span><span class="kv-val">${c.facilitySqm.toLocaleString('de-DE')}\u202fm²</span></div>` : ''}
+        ${c.facilityCost!= null ? `<div class="kv-row"><span class="kv-key">Jährl. Mietkosten (est.)</span><span class="kv-val">${fmtEur(c.facilityCost)}</span></div>` : ''}
+        ${c.rent != null && c.facilitySqm != null ? `<div class="kv-row"><span class="kv-key">Monatliche Mietlast</span><span class="kv-val">${fmtEur(Math.round(c.rent * (c.facilitySqm ?? 0)))}/Monat</span></div>` : ''}
       </div>
-      <div class="sentiment-cell">
-        <div class="sentiment-cell-label">Anzahl Bewertungen</div>
-        <div class="sentiment-cell-value">${Number(ctx.reviewCount).toLocaleString('de-DE')}</div>
+      <div class="panel">
+        <h3>Standortprofil</h3>
+        <div class="kv-row"><span class="kv-key">Region</span><span class="kv-val">${c.region}</span></div>
+        <div class="kv-row"><span class="kv-key">Land</span><span class="kv-val">${c.countryLabel}</span></div>
+        ${c.ppp != null ? `<div class="kv-row"><span class="kv-key">Kaufkraftindex</span><span class="kv-val">${c.ppp.toFixed(1)} (DE=100)</span></div>` : ''}
+        <div class="kv-row"><span class="kv-key">Zielmarkt</span><span class="kv-val">DACH</span></div>
       </div>
-      ${ctx.sentiment?.score != null ? `
-      <div class="sentiment-cell">
-        <div class="sentiment-cell-label">Netto-Sentiment</div>
-        <div class="sentiment-cell-value">${ctx.sentiment.score >= 0 ? '+' : ''}${ctx.sentiment.score.toFixed(1)}</div>
-      </div>` : ''}
-      ${ctx.sentiment?.positive != null ? `
-      <div class="sentiment-cell">
-        <div class="sentiment-cell-label">Positiv / Negativ</div>
-        <div class="sentiment-cell-value">${ctx.sentiment.positive} / ${ctx.sentiment.negative}</div>
-      </div>` : ''}
-      ${ctx.sentiment?.tourists ? `
-      <div class="sentiment-cell">
-        <div class="sentiment-cell-label">Tourismus-Anteil</div>
-        <div class="sentiment-cell-value">${ctx.sentiment.tourists}</div>
-      </div>` : ''}
-      ${ctx.sentiment?.languages ? `
-      <div class="sentiment-cell">
-        <div class="sentiment-cell-label">Sprachen</div>
-        <div class="sentiment-cell-value" style="font-size:0.78rem">${ctx.sentiment.languages}</div>
-      </div>` : ''}
     </div>
-    <div class="sentiment-synthesis">
-      <p>${synthesis}</p>
-      ${praisesHtml ? `<ul class="praises-list">${praisesHtml}</ul>` : ''}
-    </div>
+
   </div>
 
-  <!-- cta -->
-  <div class="cta-block">
-    <h2>Vollständiges Exposé anfragen</h2>
-    <p>Qualifizierte Investoren erhalten auf Anfrage das vollständige Informationsmemorandum inkl. detaillierter Finanzmodelle, Standortanalyse und Due-Diligence-Unterlagen.</p>
-    <a class="cta-btn" href="mailto:deals@firmadeal.com?subject=Exposé-Anfrage: ${encodeURIComponent(ctx.sectorLabel + ' – ' + ctx.region)}">Vollständiges Exposé anfragen</a>
-    <div class="disclaimer">
-      Dieses Dokument ist vollständig anonymisiert und ausschließlich für die institutionelle Investorenprüfung bestimmt. Alle Finanzkennzahlen sind Schätzwerte auf Basis öffentlich zugänglicher Daten und stellen keine Gewähr oder Zusicherung dar. Eine Investitionsentscheidung darf ausschließlich auf Basis geprüfter Jahresabschlüsse und vollständiger Due-Diligence-Unterlagen getroffen werden. Firmadeal GmbH übernimmt keinerlei Haftung für die Richtigkeit der Angaben.
+  <!-- ════════════════════════════════════════════════════════════ PAGE 3 ══ -->
+  <div class="page-section">
+
+    <div class="section-banner">
+      <h2>Probabilistische GuV-Szenarioanalyse</h2>
+      <span class="page-tag">Seite 3 / 4</span>
     </div>
+
+    <div class="slabel">Szenario-Vergleich — Bear / Base / Bull</div>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th style="width:42%">Position</th>
+          <th>Bear Case</th>
+          <th>Base Case</th>
+          <th>Bull Case</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="row-label">Umsatz</td>
+          <td>${revLowStr}</td>
+          <td class="mid">${revBaseStr}</td>
+          <td>${revHighStr}</td>
+        </tr>
+        <tr>
+          <td class="row-label" style="padding-left:22px;font-weight:400;color:var(--muted)">./. COGS (${100-(c.grossMargin??12)}\u202f%)</td>
+          <td class="neg">${cogsLow  ? `–\u202f${fmtEur(cogsLow)}`  : '—'}</td>
+          <td class="neg mid">${cogsBase ? `–\u202f${fmtEur(cogsBase)}` : '—'}</td>
+          <td class="neg">${cogsHigh ? `–\u202f${fmtEur(cogsHigh)}` : '—'}</td>
+        </tr>
+        <tr class="total-row">
+          <td class="row-label">Rohertrag (${c.grossMargin ?? 12}\u202f%)</td>
+          <td>${gpLow  ? fmtEur(gpLow)  : '—'}</td>
+          <td class="mid">${gpBase ? fmtEur(gpBase) : '—'}</td>
+          <td>${gpHigh ? fmtEur(gpHigh) : '—'}</td>
+        </tr>
+        <tr><td colspan="4" class="row-label" style="padding:10px 12px 4px;font-size:.65rem;text-transform:uppercase;letter-spacing:.08em;color:var(--subtle)">Fixkosten</td></tr>
+        <tr>
+          <td class="row-label" style="padding-left:22px;font-weight:400">Personal (${c.fte ?? '—'}\u202fFTE)</td>
+          <td class="neg">${c.personnelCost ? `–\u202f${fmtEur(c.personnelCost)}` : '—'}</td>
+          <td class="neg mid">${c.personnelCost ? `–\u202f${fmtEur(c.personnelCost)}` : '—'}</td>
+          <td class="neg">${c.personnelCost ? `–\u202f${fmtEur(c.personnelCost)}` : '—'}</td>
+        </tr>
+        <tr>
+          <td class="row-label" style="padding-left:22px;font-weight:400">Miete (${c.facilitySqm ?? '—'}\u202fm²)</td>
+          <td class="neg">${c.facilityCost ? `–\u202f${fmtEur(c.facilityCost)}` : '—'}</td>
+          <td class="neg mid">${c.facilityCost ? `–\u202f${fmtEur(c.facilityCost)}` : '—'}</td>
+          <td class="neg">${c.facilityCost ? `–\u202f${fmtEur(c.facilityCost)}` : '—'}</td>
+        </tr>
+        <tr>
+          <td class="row-label" style="padding-left:22px;font-weight:400">Sonst. OpEx (8\u202f%)</td>
+          <td class="neg">${varLow  ? `–\u202f${fmtEur(varLow)}`  : '—'}</td>
+          <td class="neg mid">${varBase ? `–\u202f${fmtEur(varBase)}` : '—'}</td>
+          <td class="neg">${varHigh ? `–\u202f${fmtEur(varHigh)}` : '—'}</td>
+        </tr>
+        <tr class="spacer"><td colspan="4"></td></tr>
+        <tr class="total-row">
+          <td class="row-label">EBITDA</td>
+          <td class="${(c.eLow ?? 0) < 0 ? 'neg' : 'pos'}">${eLowStr}</td>
+          <td class="${(c.eBase ?? 0) < 0 ? 'neg' : 'pos'} mid">${eBaseStr}</td>
+          <td class="${(c.eHigh ?? 0) < 0 ? 'neg' : 'pos'}">${eHighStr}</td>
+        </tr>
+        ${c.revBase && c.eBase != null ? `
+        <tr>
+          <td class="row-label">EBITDA-Marge</td>
+          <td>${c.revLow  && c.eLow  != null ? (c.eLow/c.revLow*100).toFixed(1)+'\u202f%' : '—'}</td>
+          <td class="mid">${(c.eBase/c.revBase*100).toFixed(1)}\u202f%</td>
+          <td>${c.revHigh && c.eHigh != null ? (c.eHigh/c.revHigh*100).toFixed(1)+'\u202f%' : '—'}</td>
+        </tr>` : ''}
+      </tbody>
+    </table>
+
+    ${c.fixedCostRatio != null ? `
+    <div class="text-block">
+      <strong>Strukturelle Analyse:</strong> Die Fixkostenstruktur absorbiert ${c.fixedCostRatio}\u202f% des Rohertrags im Base Case.
+      ${c.fixedCostRatio > 80 ? `Dies entspricht einem kritischen Fixkostenverhältnis — der Betrieb ist im Base Case nicht profitabel und benötigt einen Umsatz von mindestens ${c.breakeven ? fmtEur(c.breakeven) : '—'} um die Gewinnschwelle zu erreichen.
+      Jeder Euro Umsatz unterhalb dieses Schwellenwerts vertieft das operative Defizit linear.` :
+      c.fixedCostRatio > 65 ? `Die Fixkosten erzeugen erheblichen operativen Hebel — eine Umsatzreduktion von 20\u202f% würde das EBITDA überproportional belasten.` :
+      `Die Fixkostenbasis ist für den Sektor akzeptabel, bietet jedoch begrenzten Puffer gegen Umsatzrückgänge.`}
+      ${c.isNegativeEBITDA ? ` Das Zielunternehmen ist als <strong>Turnaround-Objekt</strong> zu klassifizieren: erst im Bull Case wird ein positives EBITDA von ${eHighStr} erzielt.` : ''}
+    </div>` : ''}
+
+    <div class="slabel">Kundenbewertung & Marktwahrnehmung</div>
+    ${c.sentiment ? `
+    <div class="two-col">
+      <div class="panel">
+        <h3>Bewertungsmetriken</h3>
+        ${c.rating != null ? `<div class="kv-row"><span class="kv-key">Google-Gesamtbewertung</span><span class="kv-val">★ ${c.rating} / 5,0</span></div>` : ''}
+        ${c.reviewCount != null ? `<div class="kv-row"><span class="kv-key">Bewertungsvolumen</span><span class="kv-val">${Number(c.reviewCount).toLocaleString('de-DE')}</span></div>` : ''}
+        ${c.sentiment.score != null ? `<div class="kv-row"><span class="kv-key">Netto-Sentiment</span><span class="kv-val">${c.sentiment.score >= 0 ? '+' : ''}${c.sentiment.score.toFixed(1)}</span></div>` : ''}
+        ${c.sentiment.positive != null ? `<div class="kv-row"><span class="kv-key">Positiv / Negativ</span><span class="kv-val">${c.sentiment.positive} / ${c.sentiment.negative}</span></div>` : ''}
+        ${c.sentiment.tourists != null ? `<div class="kv-row"><span class="kv-key">Tourismus-Anteil</span><span class="kv-val">${c.sentiment.tourists}\u202f%</span></div>` : ''}
+        ${c.sentiment.languages ? `<div class="kv-row"><span class="kv-key">Sprachen</span><span class="kv-val" style="font-size:.75rem">${c.sentiment.languages}</span></div>` : ''}
+      </div>
+      <div class="panel">
+        <h3>Wettbewerb & Marktposition</h3>
+        ${c.competitorCount != null ? `<div class="kv-row"><span class="kv-key">Direkte Wettbewerber (1\u202fkm)</span><span class="kv-val">${c.competitorCount}</span></div>` : ''}
+        ${c.demandShare != null ? `<div class="kv-row"><span class="kv-key">Lokaler Nachfrageanteil</span><span class="kv-val">${c.demandShare.toFixed(1)}\u202f%</span></div>` : ''}
+        ${c.ratingVsMarket != null ? `<div class="kv-row"><span class="kv-key">Bewertung vs. Marktø</span><span class="kv-val" style="color:${c.ratingVsMarket>0?'#16a34a':'var(--red)'}">${c.ratingVsMarket>0?'+':''}${c.ratingVsMarket.toFixed(2)}</span></div>` : ''}
+        ${c.pricingSignal ? `<div class="kv-row"><span class="kv-key">Pricing-Power</span><span class="kv-val" style="color:${c.pricingSignal==='STRONG'?'#16a34a':c.pricingSignal==='WEAK'?'var(--red)':'var(--amber)'}">${c.pricingSignal==='STRONG'?'Stark':c.pricingSignal==='MODERATE'?'Moderat':'Schwach'}</span></div>` : ''}
+      </div>
+    </div>` : `
+    <div class="two-col">
+      <div class="panel">
+        <h3>Bewertungsmetriken</h3>
+        ${c.rating != null ? `<div class="kv-row"><span class="kv-key">Google-Gesamtbewertung</span><span class="kv-val">★ ${c.rating} / 5,0 (${Number(c.reviewCount).toLocaleString('de-DE')} Rez.)</span></div>` : ''}
+      </div>
+      <div class="panel">
+        <h3>Wettbewerb</h3>
+        ${c.competitorCount != null ? `<div class="kv-row"><span class="kv-key">Direkte Wettbewerber</span><span class="kv-val">${c.competitorCount}</span></div>` : ''}
+      </div>
+    </div>`}
+
   </div>
 
-  <div class="fd-brand">Erstellt mit <strong>Firmadeal</strong> Intelligence Platform &nbsp;·&nbsp; firmadeal.com</div>
+  <!-- ════════════════════════════════════════════════════════════ PAGE 4 ══ -->
+  <div class="page-section">
+
+    <div class="section-banner">
+      <h2>IT-Infrastrukturrisiko & Marktumfeld</h2>
+      <span class="page-tag">Seite 4 / 4</span>
+    </div>
+
+    <div class="slabel">Cybersecurity & Digitale Infrastruktur</div>
+    ${c.dvScore != null ? `
+    <div class="fin-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px">
+      <div class="fin-card">
+        <div class="fin-card-label">Digital-Risiko-Score</div>
+        <div class="fin-card-value" style="color:${dvRiskColor}">${c.dvScore} / 100</div>
+        <div class="fin-card-sub">${c.dvScore >= 80 ? 'Kritisch' : c.dvScore >= 50 ? 'Erhöht' : 'Moderat'}</div>
+      </div>
+      <div class="fin-card">
+        <div class="fin-card-label">SSL/TLS-Verschlüsselung</div>
+        <div class="fin-card-value" style="color:${c.dvSsl===false?'var(--red)':'#16a34a'}">${c.dvSsl===false?'Fehlt':'Aktiv'}</div>
+        <div class="fin-card-sub">${c.dvSsl===false?'Kritisches Datenschutzrisiko':'Verbindung gesichert'}</div>
+      </div>
+      <div class="fin-card">
+        <div class="fin-card-label">E-Mail-Authentifizierung</div>
+        <div class="fin-card-value" style="color:${(c.dvSpf===false||c.dvDmarc===false)?'var(--red)':'#16a34a'}">${(c.dvSpf===false||c.dvDmarc===false)?'Unvollständig':'Konfiguriert'}</div>
+        <div class="fin-card-sub">${c.dvSpf===false?'SPF fehlt':''} ${c.dvDmarc===false?'· DMARC fehlt':''}</div>
+      </div>
+    </div>` : ''}
+
+    ${dvItems.map(item => `
+    <div class="risk-item ${item.ok ? 'pass' : 'fail'}">
+      <div class="risk-dot ${item.ok ? 'pass' : 'fail'}"></div>
+      <div>
+        <div class="risk-label">${item.label}</div>
+        <div class="risk-note">${item.note}</div>
+      </div>
+    </div>`).join('')}
+
+    ${(c.dvSsl === false || c.dvSpf === false || c.dvDmarc === false) ? `
+    <div class="text-block" style="margin-top:16px">
+      <strong>Risikobewertung:</strong> Das vorliegende Zielunternehmen weist kritische Sicherheitslücken in der digitalen Infrastruktur auf.
+      ${c.dvSsl === false ? 'Das Fehlen einer gültigen SSL/TLS-Verschlüsselung gefährdet die Datenintegrität aller Kundeninteraktionen und verletzt aktuelle DSGVO-Anforderungen. ' : ''}
+      ${c.dvSpf === false ? 'Fehlende SPF-Einträge ermöglichen E-Mail-Spoofing im Namen des Unternehmens — ein erhebliches Phishing- und Reputationsrisiko. ' : ''}
+      ${c.dvDmarc === false ? 'Die Abwesenheit einer DMARC-Richtlinie bedeutet vollständige Transparenz für betrügerische Akteure, die die Unternehmensdomäne missbrauchen. ' : ''}
+      Ein qualifizierter IT-Auditor sollte vor Transaktionsabschluss eine vollständige Sicherheitsprüfung durchführen. Die Kosten der Nachbesserung sind in der Kaufpreisverhandlung zu berücksichtigen.
+    </div>` : ''}
+
+    <div class="slabel" style="margin-top:24px">Wettbewerbslandschaft & Marktdynamik</div>
+    ${c.competitors?.length > 0 ? `
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th style="text-align:left">Wettbewerber</th>
+          <th>Bewertung</th>
+          <th>Anz. Bewertungen</th>
+          <th>Entfernung</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${c.competitors.slice(0, 5).map((comp: any) => `
+        <tr>
+          <td class="row-label">${comp.name ?? '—'}</td>
+          <td>${comp.rating ? `★ ${comp.rating}` : '—'}</td>
+          <td>${comp.review_count ? Number(comp.review_count).toLocaleString('de-DE') : '—'}</td>
+          <td>${comp.distance_m ? `${comp.distance_m}\u202fm` : '—'}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>` : `
+    <div class="two-col">
+      <div class="panel">
+        <h3>Marktumfeld</h3>
+        ${c.competitorCount != null ? `<div class="kv-row"><span class="kv-key">Direktwettbewerber (1\u202fkm)</span><span class="kv-val">${c.competitorCount}</span></div>` : ''}
+        ${c.demandShare    != null ? `<div class="kv-row"><span class="kv-key">Lokaler Nachfrageanteil</span><span class="kv-val">${c.demandShare.toFixed(1)}\u202f%</span></div>` : ''}
+        ${c.ratingVsMarket != null ? `<div class="kv-row"><span class="kv-key">Bewertungsdifferenz zum Marktø</span><span class="kv-val" style="color:${c.ratingVsMarket>0?'#16a34a':'var(--red)'}">${c.ratingVsMarket>0?'+':''}${c.ratingVsMarket.toFixed(2)}</span></div>` : ''}
+      </div>
+      <div class="panel">
+        <h3>Standortbewertung</h3>
+        <div class="kv-row"><span class="kv-key">Sektor</span><span class="kv-val">${c.sectorLabel}</span></div>
+        <div class="kv-row"><span class="kv-key">Region</span><span class="kv-val">${c.region}</span></div>
+        <div class="kv-row"><span class="kv-key">Zielmarkt</span><span class="kv-val">DACH</span></div>
+      </div>
+    </div>`}
+
+    <!-- CTA -->
+    <div class="cta-block" style="margin-top:28px">
+      <h2>Vollständiges Exposé anfragen</h2>
+      <p>Qualifizierte Investoren und strategische Käufer erhalten auf Anfrage das vollständige Informationsmemorandum inkl. Finanzmodellen, Standortanalyse und Due-Diligence-Unterlagen.</p>
+      <a class="cta-btn" href="mailto:deals@firmadeal.de?subject=${encodeURIComponent('Exposé-Anfrage: ' + c.sectorLabel + ' – ' + c.region)}">Vollständiges Exposé anfragen</a>
+      <div class="disclaimer">
+        Dieses Dokument ist vollständig anonymisiert und ausschließlich für die institutionelle Investorenprüfung bestimmt. Alle Finanzkennzahlen sind probabilistische Schätzwerte, abgeleitet aus Open-Source-Intelligence-Plattformen. Sie stellen keine Gewähr, Zusicherung oder steuerliche bzw. rechtliche Beratung dar. Eine Investitionsentscheidung darf ausschließlich auf Basis geprüfter Jahresabschlüsse, physischer Due Diligence sowie vollständiger Transaktionsdokumentation getroffen werden. Firmadeal GmbH übernimmt keinerlei Haftung für die Richtigkeit oder Vollständigkeit der Angaben. Stand: ${today}.
+      </div>
+    </div>
+
+  </div>
+
+  <div class="fd-footer">Erstellt mit <strong>Firmadeal</strong> Intelligence Platform &nbsp;·&nbsp; firmadeal.de &nbsp;·&nbsp; ${today}</div>
 
 </div>
 </body>
 </html>`;
 }
 
+// ── Route handler ──────────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   const body = await req.json();
   const ctx  = buildContext(body);
-  const html = renderHtml(ctx);
+  const html = render(ctx);
   return NextResponse.json({ html });
 }
